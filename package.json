@@ -1,0 +1,23 @@
+{
+  "name": "movie-watchlist",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "dev": "concurrently -n server,client -c blue,magenta \"npm:dev:server\" \"npm:dev:client\"",
+    "dev:server": "npm -w server run dev",
+    "dev:client": "npm -w client run dev",
+    "build": "npm -w client run build && npm -w server run build",
+    "start": "npm -w server start",
+    "typecheck": "npm -w server run typecheck && npm -w client run typecheck",
+    "db:reset": "npm -w server run db:reset"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0",
+    "typescript": "^5.7.2"
+  }
+}

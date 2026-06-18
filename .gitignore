@@ -1,0 +1,14 @@
+node_modules/
+dist/
+build/
+server/public/
+server/dist/
+client/dist/
+server/data/*.db
+server/data/*.db-journal
+server/data/*.db-wal
+server/data/*.db-shm
+.env
+*.log
+.DS_Store
+.vite/

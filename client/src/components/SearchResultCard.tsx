@@ -1,0 +1,63 @@
+import { useState } from 'react';
+import type { SearchMovie } from '../types.js';
+import { api } from '../api.js';
+import { Poster } from './Poster.js';
+
+interface Props {
+  movie: SearchMovie;
+  disabled?: boolean;
+  disabledReason?: string;
+  onAdded: () => void;
+}
+
+export function SearchResultCard({ movie, disabled, disabledReason, onAdded }: Props) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+
+  async function add() {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.addMovie(movie.imdbID);
+      setDone(true);
+      onAdded();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to add');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="group flex flex-col overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]">
+      <div className="relative aspect-[2/3] w-full overflow-hidden">
+        <Poster src={movie.Poster !== 'N/A' ? movie.Poster : null} alt={movie.Title} className="h-full w-full" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
+      </div>
+      <div className="flex flex-1 flex-col gap-2 p-3">
+        <h3 className="line-clamp-2 text-sm font-semibold leading-tight" title={movie.Title}>
+          {movie.Title}
+        </h3>
+        <p className="text-xs text-slate-400">{movie.Year}</p>
+
+        {done ? (
+          <span className="mt-auto inline-flex items-center justify-center rounded-md bg-emerald-500/15 px-2 py-1.5 text-xs font-medium text-emerald-300">
+            Added to watchlist
+          </span>
+        ) : (
+          <button
+            type="button"
+            onClick={add}
+            disabled={busy || disabled}
+            title={disabled ? disabledReason : undefined}
+            className="mt-auto inline-flex items-center justify-center rounded-md bg-[var(--color-accent)] px-2 py-1.5 text-xs font-semibold text-black transition-colors hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {busy ? 'Adding…' : '+ Add'}
+          </button>
+        )}
+        {error && <p className="text-xs text-rose-400">{error}</p>}
+      </div>
+    </div>
+  );
+}
