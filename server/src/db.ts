@@ -16,15 +16,19 @@ export type WatchStatus = 'want' | 'watching' | 'watched';
 
 export interface WatchlistRow {
   id: number;
-  imdb_id: string;
+  tmdb_id: number;
   title: string;
+  original_title: string | null;
   year: string | null;
-  poster: string | null;
+  poster_path: string | null;
+  backdrop_path: string | null;
   genre: string | null;
   director: string | null;
   plot: string | null;
-  runtime: string | null;
-  imdb_rating: string | null;
+  tagline: string | null;
+  runtime: number | null;
+  tmdb_rating: number | null;
+  imdb_id: string | null;
   status: WatchStatus;
   rating: number | null;
   notes: string | null;
@@ -34,47 +38,61 @@ export interface WatchlistRow {
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS watchlist (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    imdb_id      TEXT NOT NULL UNIQUE,
-    title        TEXT NOT NULL,
-    year         TEXT,
-    poster       TEXT,
-    genre        TEXT,
-    director     TEXT,
-    plot         TEXT,
-    runtime      TEXT,
-    imdb_rating  TEXT,
-    status       TEXT NOT NULL DEFAULT 'want' CHECK (status IN ('want','watching','watched')),
-    rating       INTEGER CHECK (rating IS NULL OR (rating >= 1 AND rating <= 5)),
-    notes        TEXT,
-    added_at     TEXT NOT NULL DEFAULT (datetime('now')),
-    watched_at   TEXT
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    tmdb_id         INTEGER NOT NULL UNIQUE,
+    title           TEXT NOT NULL,
+    original_title  TEXT,
+    year            TEXT,
+    poster_path     TEXT,
+    backdrop_path   TEXT,
+    genre           TEXT,
+    director        TEXT,
+    plot            TEXT,
+    tagline         TEXT,
+    runtime         INTEGER,
+    tmdb_rating     REAL,
+    imdb_id         TEXT,
+    status          TEXT NOT NULL DEFAULT 'want' CHECK (status IN ('want','watching','watched')),
+    rating          INTEGER CHECK (rating IS NULL OR (rating >= 1 AND rating <= 5)),
+    notes           TEXT,
+    added_at        TEXT NOT NULL DEFAULT (datetime('now')),
+    watched_at      TEXT
   );
   CREATE INDEX IF NOT EXISTS idx_watchlist_status ON watchlist(status);
   CREATE INDEX IF NOT EXISTS idx_watchlist_added ON watchlist(added_at);
 `);
 
 export interface AddMovieInput {
-  imdb_id: string;
+  tmdb_id: number;
   title: string;
+  original_title?: string | null;
   year?: string | null;
-  poster?: string | null;
+  poster_path?: string | null;
+  backdrop_path?: string | null;
   genre?: string | null;
   director?: string | null;
   plot?: string | null;
-  runtime?: string | null;
-  imdb_rating?: string | null;
+  tagline?: string | null;
+  runtime?: number | null;
+  tmdb_rating?: number | null;
+  imdb_id?: string | null;
 }
 
 const insertStmt = db.prepare(`
-  INSERT INTO watchlist (imdb_id, title, year, poster, genre, director, plot, runtime, imdb_rating)
-  VALUES (@imdb_id, @title, @year, @poster, @genre, @director, @plot, @runtime, @imdb_rating)
-  ON CONFLICT(imdb_id) DO NOTHING
+  INSERT INTO watchlist (
+    tmdb_id, title, original_title, year, poster_path, backdrop_path,
+    genre, director, plot, tagline, runtime, tmdb_rating, imdb_id
+  )
+  VALUES (
+    @tmdb_id, @title, @original_title, @year, @poster_path, @backdrop_path,
+    @genre, @director, @plot, @tagline, @runtime, @tmdb_rating, @imdb_id
+  )
+  ON CONFLICT(tmdb_id) DO NOTHING
   RETURNING id
 `);
 
 const getByIdStmt = db.prepare('SELECT * FROM watchlist WHERE id = ?');
-const getByImdbStmt = db.prepare('SELECT * FROM watchlist WHERE imdb_id = ?');
+const getByTmdbStmt = db.prepare('SELECT * FROM watchlist WHERE tmdb_id = ?');
 const listStmt = db.prepare('SELECT * FROM watchlist ORDER BY added_at DESC');
 const listByStatusStmt = db.prepare('SELECT * FROM watchlist WHERE status = ? ORDER BY added_at DESC');
 
@@ -87,7 +105,7 @@ export function addMovie(input: AddMovieInput): { item: WatchlistRow | null; cre
     input as unknown as Record<string, SQLInputValue>,
   ) as unknown as { id: number } | undefined;
   if (row) return { item: coerceRow(getByIdStmt.get(row.id)), created: true };
-  return { item: coerceRow(getByImdbStmt.get(input.imdb_id)), created: false };
+  return { item: coerceRow(getByTmdbStmt.get(input.tmdb_id)), created: false };
 }
 
 export function getById(id: number): WatchlistRow | null {

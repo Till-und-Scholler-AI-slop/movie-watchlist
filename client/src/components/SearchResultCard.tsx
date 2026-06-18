@@ -19,7 +19,7 @@ export function SearchResultCard({ movie, disabled, disabledReason, onAdded }: P
     setBusy(true);
     setError(null);
     try {
-      await api.addMovie(movie.imdbID);
+      await api.addMovie(movie.tmdb_id);
       setDone(true);
       onAdded();
     } catch (e) {
@@ -29,17 +29,35 @@ export function SearchResultCard({ movie, disabled, disabledReason, onAdded }: P
     }
   }
 
+  const showOriginal =
+    movie.title_original &&
+    movie.title_original !== movie.title_de &&
+    movie.title_original.length > 0;
+
   return (
     <div className="group flex flex-col overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]">
       <div className="relative aspect-[2/3] w-full overflow-hidden">
-        <Poster src={movie.Poster !== 'N/A' ? movie.Poster : null} alt={movie.Title} className="h-full w-full" />
+        <Poster src={movie.poster_url} alt={movie.title_de} className="h-full w-full" />
         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
       </div>
-      <div className="flex flex-1 flex-col gap-2 p-3">
-        <h3 className="line-clamp-2 text-sm font-semibold leading-tight" title={movie.Title}>
-          {movie.Title}
+      <div className="flex flex-1 flex-col gap-1.5 p-3">
+        <h3 className="line-clamp-2 text-sm font-semibold leading-tight" title={movie.title_de}>
+          {movie.title_de}
         </h3>
-        <p className="text-xs text-slate-400">{movie.Year}</p>
+        {showOriginal && (
+          <p className="line-clamp-1 text-xs italic text-slate-500" title={movie.title_original}>
+            {movie.title_original}
+          </p>
+        )}
+        <div className="flex items-center gap-2 text-xs text-slate-400">
+          <span>{movie.year}</span>
+          {movie.vote_average > 0 && (
+            <span className="inline-flex items-center gap-1">
+              <span className="text-amber-400">{'\u2605'}</span>
+              {movie.vote_average.toFixed(1)}
+            </span>
+          )}
+        </div>
 
         {done ? (
           <span className="mt-auto inline-flex items-center justify-center rounded-md bg-emerald-500/15 px-2 py-1.5 text-xs font-medium text-emerald-300">

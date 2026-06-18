@@ -8,6 +8,14 @@ import type {
 
 const API = '/api';
 
+const IMG_BASE = 'https://image.tmdb.org/t/p';
+const POSTER_SIZE = 'w500';
+
+export function posterUrlFromPath(path: string | null | undefined): string | null {
+  if (!path) return null;
+  return `${IMG_BASE}/${POSTER_SIZE}${path}`;
+}
+
 async function http<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     headers: { 'Content-Type': 'application/json' },
@@ -38,10 +46,10 @@ export const api = {
     return http(`${API}/watchlist${qs}`);
   },
 
-  addMovie(imdb_id: string): Promise<{ item: WatchlistItem }> {
+  addMovie(tmdb_id: number): Promise<{ item: WatchlistItem }> {
     return http(`${API}/watchlist`, {
       method: 'POST',
-      body: JSON.stringify({ imdb_id }),
+      body: JSON.stringify({ tmdb_id }),
     });
   },
 

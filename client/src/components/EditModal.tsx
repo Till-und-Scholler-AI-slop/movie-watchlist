@@ -43,6 +43,11 @@ export function EditModal({ item, onClose, onSaved }: Props) {
     }
   }
 
+  const showOriginal =
+    item.original_title &&
+    item.original_title !== item.title &&
+    item.original_title.length > 0;
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
@@ -53,12 +58,20 @@ export function EditModal({ item, onClose, onSaved }: Props) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-start justify-between">
-          <div>
-            <h2 className="text-lg font-semibold">{item.title}</h2>
-            <p className="text-xs text-slate-400">
+          <div className="min-w-0">
+            <h2 className="truncate text-lg font-semibold" title={item.title}>{item.title}</h2>
+            {showOriginal && (
+              <p className="truncate text-xs italic text-slate-500" title={item.original_title ?? undefined}>
+                {item.original_title}
+              </p>
+            )}
+            <p className="mt-1 text-xs text-slate-400">
               {item.year}
-              {item.director && item.director !== 'N/A' ? ` · ${item.director}` : ''}
+              {item.director ? ` · ${item.director}` : ''}
             </p>
+            {item.tagline && (
+              <p className="mt-1 text-xs italic text-slate-500">&ldquo;{item.tagline}&rdquo;</p>
+            )}
           </div>
           <button
             type="button"
@@ -119,7 +132,7 @@ export function EditModal({ item, onClose, onSaved }: Props) {
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={4}
-              placeholder="What did you think?"
+              placeholder="Was denkst du über den Film?"
               className="w-full resize-none rounded-lg border border-[var(--color-border)] bg-[var(--color-canvas)] p-3 text-sm text-slate-100 outline-none focus:border-amber-500/50"
             />
           </div>

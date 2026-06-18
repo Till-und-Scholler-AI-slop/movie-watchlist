@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { addMovie, list, getById, updateEntry, removeEntry, type WatchStatus } from '../db.js';
-import { getMovieDetail, type OmdbDetail } from '../omdb.js';
+import { getMovieDetail, genresFromDetail, directorFromDetail, type TmdbDetail } from '../tmdb.js';
 
 export const watchlistRouter = Router();
 
@@ -12,27 +12,31 @@ watchlistRouter.get('/', (req, res) => {
 });
 
 watchlistRouter.post('/', async (req, res) => {
-  const { imdb_id } = req.body ?? {};
-  if (typeof imdb_id !== 'string' || !imdb_id.trim()) {
-    return res.status(400).json({ error: 'imdb_id is required' });
+  const { tmdb_id } = req.body ?? {};
+  if (typeof tmdb_id !== 'number' || !Number.isFinite(tmdb_id)) {
+    return res.status(400).json({ error: 'tmdb_id (number) is required' });
   }
 
-  const detail: OmdbDetail | null = await getMovieDetail(imdb_id);
-  if (!detail) return res.status(404).json({ error: 'Movie not found on OMDb' });
+  const detail: TmdbDetail | null = await getMovieDetail(tmdb_id);
+  if (!detail) return res.status(404).json({ error: 'Movie not found on TMDB' });
 
   const result = addMovie({
-    imdb_id: detail.imdbID,
-    title: detail.Title,
-    year: detail.Year,
-    poster: detail.Poster && detail.Poster !== 'N/A' ? detail.Poster : null,
-    genre: detail.Genre && detail.Genre !== 'N/A' ? detail.Genre : null,
-    director: detail.Director && detail.Director !== 'N/A' ? detail.Director : null,
-    plot: detail.Plot && detail.Plot !== 'N/A' ? detail.Plot : null,
-    runtime: detail.Runtime && detail.Runtime !== 'N/A' ? detail.Runtime : null,
-    imdb_rating: detail.imdbRating && detail.imdbRating !== 'N/A' ? detail.imdbRating : null,
+    tmdb_id: detail.id,
+    title: detail.title || detail.original_title,
+    original_title: detail.original_title || null,
+    year: detail.release_date ? detail.release_date.slice(0, 4) : null,
+    poster_path: detail.poster_path,
+    backdrop_path: detail.backdrop_path,
+    genre: genresFromDetail(detail),
+    director: directorFromDetail(detail),
+    plot: detail.overview || null,
+    tagline: detail.tagline || null,
+    runtime: detail.runtime,
+    tmdb_rating: detail.vote_average,
+    imdb_id: detail.imdb_id,
   });
 
-  if (!result.item) return res.status(404).json({ error: 'Movie not found on OMDb' });
+  if (!result.item) return res.status(404).json({ error: 'Movie not found on TMDB' });
   if (!result.created) return res.status(409).json({ error: 'Already in watchlist', item: result.item });
   res.status(201).json({ item: result.item });
 });

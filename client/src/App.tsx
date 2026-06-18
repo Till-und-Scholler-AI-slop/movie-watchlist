@@ -33,7 +33,7 @@ export function App() {
   // Modal
   const [editing, setEditing] = useState<WatchlistItem | null>(null);
 
-  const watchlistImdbIds = useMemo(() => new Set(items.map((i) => i.imdb_id)), [items]);
+  const watchlistTmdbIds = useMemo(() => new Set(items.map((i) => i.tmdb_id)), [items]);
 
   const refreshWatchlist = useCallback(async () => {
     setListLoading(true);
@@ -60,7 +60,6 @@ export function App() {
     void refreshStats();
   }, [refreshWatchlist, refreshStats]);
 
-  // Debounced search
   const runSearch = useCallback(async (q: string, page = 1) => {
     if (!q.trim()) {
       setResults([]);
@@ -103,7 +102,7 @@ export function App() {
   }
 
   async function handleRemove(item: WatchlistItem) {
-    if (!confirm(`Remove "${item.title}" from your watchlist?`)) return;
+    if (!confirm(`„${item.title}" aus deiner Watchlist entfernen?`)) return;
     try {
       await api.removeItem(item.id);
       await Promise.all([refreshWatchlist(), refreshStats()]);
@@ -133,13 +132,13 @@ export function App() {
                 key={v}
                 type="button"
                 onClick={() => setView(v)}
-                className={`rounded-md px-3 py-1.5 text-sm font-medium capitalize transition-colors ${
+                className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
                   view === v
                     ? 'bg-[var(--color-accent)] text-black'
                     : 'text-slate-300 hover:bg-[var(--color-surface-2)]'
                 }`}
               >
-                {v === 'watchlist' ? `Watchlist (${items.length})` : v}
+                {v === 'watchlist' ? `Watchlist (${items.length})` : v === 'stats' ? 'Stats' : 'Suche'}
               </button>
             ))}
           </nav>
@@ -153,7 +152,7 @@ export function App() {
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search for a movie…"
+                placeholder="Film suchen … (deutsch oder englisch)"
                 autoFocus
                 className="w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] py-3 pl-11 pr-4 text-base text-slate-100 outline-none focus:border-amber-500/50"
               />
@@ -162,15 +161,15 @@ export function App() {
               </span>
               {searching && (
                 <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs text-slate-400">
-                  searching…
+                  suche…
                 </span>
               )}
             </div>
 
             {usingFallback && query.trim() && (
               <p className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
-                No <code>OMDB_API_KEY</code> set — showing built-in demo catalog. Set a key in your
-                <code> .env</code> to search all of OMDb.
+                Kein <code>TMDB_API_KEY</code> gesetzt — eingeschränkter Demo-Katalog aktiv.
+                Setze einen Key in deiner <code>.env</code> für die volle TMDB-Datenbank.
               </p>
             )}
             {searchError && (
@@ -180,7 +179,7 @@ export function App() {
             )}
 
             {query.trim() && !searching && results.length === 0 && !searchError && (
-              <p className="py-12 text-center text-sm text-slate-500">No movies found.</p>
+              <p className="py-12 text-center text-sm text-slate-500">Keine Filme gefunden.</p>
             )}
 
             {results.length > 0 && (
@@ -188,10 +187,10 @@ export function App() {
                 <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
                   {results.map((m) => (
                     <SearchResultCard
-                      key={m.imdbID}
+                      key={m.tmdb_id}
                       movie={m}
-                      disabled={watchlistImdbIds.has(m.imdbID)}
-                      disabledReason="Already in your watchlist"
+                      disabled={watchlistTmdbIds.has(m.tmdb_id)}
+                      disabledReason="Bereits in deiner Watchlist"
                       onAdded={handleAdded}
                     />
                   ))}
@@ -205,10 +204,10 @@ export function App() {
                       onClick={() => void runSearch(query, searchPage - 1)}
                       className="rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-sm disabled:opacity-40"
                     >
-                      Prev
+                      Zurück
                     </button>
                     <span className="text-sm text-slate-400">
-                      Page {searchPage} / {totalPages}
+                      Seite {searchPage} / {totalPages}
                     </span>
                     <button
                       type="button"
@@ -216,7 +215,7 @@ export function App() {
                       onClick={() => void runSearch(query, searchPage + 1)}
                       className="rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-sm disabled:opacity-40"
                     >
-                      Next
+                      Weiter
                     </button>
                   </div>
                 )}
@@ -226,7 +225,8 @@ export function App() {
             {!query.trim() && (
               <div className="py-16 text-center">
                 <p className="text-sm text-slate-500">
-                  Start typing to search for movies and add them to your watchlist.
+                  Tippe einen Titel ein, um Filme zu suchen und zur Watchlist hinzuzufügen.
+                  Deutsch und Englisch gleichzeitig.
                 </p>
               </div>
             )}
@@ -245,7 +245,7 @@ export function App() {
                     : 'border-[var(--color-border)] text-slate-300 hover:bg-[var(--color-surface-2)]'
                 }`}
               >
-                All ({items.length})
+                Alle ({items.length})
               </button>
               {STATUS_LIST.map((s) => {
                 const count = items.filter((i) => i.status === s).length;
@@ -267,13 +267,13 @@ export function App() {
             </div>
 
             {listLoading && items.length === 0 ? (
-              <p className="py-16 text-center text-sm text-slate-500">Loading…</p>
+              <p className="py-16 text-center text-sm text-slate-500">Laden…</p>
             ) : filteredItems.length === 0 ? (
               <div className="py-16 text-center">
                 <p className="text-sm text-slate-500">
                   {items.length === 0
-                    ? 'Your watchlist is empty. Search and add some movies!'
-                    : 'No entries for this filter.'}
+                    ? 'Deine Watchlist ist leer. Suche und füge Filme hinzu!'
+                    : 'Keine Einträge für diesen Filter.'}
                 </p>
                 {items.length === 0 && (
                   <button
@@ -281,7 +281,7 @@ export function App() {
                     onClick={() => setView('search')}
                     className="mt-4 rounded-lg bg-[var(--color-accent)] px-4 py-2 text-sm font-semibold text-black hover:bg-amber-300"
                   >
-                    Go to search
+                    Zur Suche
                   </button>
                 )}
               </div>
@@ -303,12 +303,12 @@ export function App() {
         {view === 'stats' && (
           <section>
             <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-slate-400">
-              Your watchlist at a glance
+              Deine Watchlist auf einen Blick
             </h2>
             <StatsBar stats={stats} />
             {stats && stats.summary.total === 0 && (
               <p className="mt-8 text-center text-sm text-slate-500">
-                Add movies to your watchlist to see stats here.
+                Füge Filme zu deiner Watchlist hinzu, um hier Statistiken zu sehen.
               </p>
             )}
           </section>
@@ -320,7 +320,7 @@ export function App() {
       )}
 
       <footer className="mx-auto max-w-6xl px-4 py-8 text-center text-xs text-slate-600">
-        Movie Watchlist · data from OMDb · {new Date().getFullYear()}
+        Movie Watchlist · Daten von TMDB · {new Date().getFullYear()}
       </footer>
     </div>
   );

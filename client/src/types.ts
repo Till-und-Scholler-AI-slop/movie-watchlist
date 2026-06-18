@@ -1,11 +1,13 @@
 export type WatchStatus = 'want' | 'watching' | 'watched';
 
 export interface SearchMovie {
-  imdbID: string;
-  Title: string;
-  Year: string;
-  Poster: string;
-  Type: string;
+  tmdb_id: number;
+  title_de: string;
+  title_original: string;
+  year: string;
+  poster_url: string | null;
+  overview_de: string;
+  vote_average: number;
 }
 
 export interface SearchResponse {
@@ -18,15 +20,19 @@ export interface SearchResponse {
 
 export interface WatchlistItem {
   id: number;
-  imdb_id: string;
+  tmdb_id: number;
   title: string;
+  original_title: string | null;
   year: string | null;
-  poster: string | null;
+  poster_path: string | null;
+  backdrop_path: string | null;
   genre: string | null;
   director: string | null;
   plot: string | null;
-  runtime: string | null;
-  imdb_rating: string | null;
+  tagline: string | null;
+  runtime: number | null;
+  tmdb_rating: number | null;
+  imdb_id: string | null;
   status: WatchStatus;
   rating: number | null;
   notes: string | null;
