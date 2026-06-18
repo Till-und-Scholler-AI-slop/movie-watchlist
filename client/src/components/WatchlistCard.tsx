@@ -1,8 +1,9 @@
 import type { WatchlistItem } from '../types.js';
-import { api, posterUrlFromPath } from '../api.js';
+import { posterUrlFromPath } from '../api.js';
 import { Poster } from './Poster.js';
 import { Stars } from './Stars.js';
 import { StatusBadge } from './StatusBadge.js';
+import { MediaTypeBadge } from './MediaTypeBadge.js';
 
 interface Props {
   item: WatchlistItem;
@@ -19,12 +20,24 @@ function formatRuntime(min: number | null): string | null {
   return `${h} h ${m} min`;
 }
 
+function formatShowInfo(item: WatchlistItem): string | null {
+  const seasons = item.number_of_seasons;
+  const episodes = item.number_of_episodes;
+  if (!seasons && !episodes) return null;
+  const parts: string[] = [];
+  if (seasons) parts.push(`${seasons} Staffel${seasons !== 1 ? 'n' : ''}`);
+  if (episodes) parts.push(`${episodes} Episode${episodes !== 1 ? 'n' : ''}`);
+  return parts.join(' · ');
+}
+
 export function WatchlistCard({ item, onEdit, onRemove }: Props) {
   const poster = posterUrlFromPath(item.poster_path);
   const showOriginal =
     item.original_title &&
     item.original_title !== item.title &&
     item.original_title.length > 0;
+
+  const meta = item.media_type === 'tv' ? formatShowInfo(item) : formatRuntime(item.runtime);
 
   return (
     <div className="flex gap-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3 transition-colors hover:border-amber-500/40">
@@ -35,6 +48,9 @@ export function WatchlistCard({ item, onEdit, onRemove }: Props) {
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
+            <div className="mb-0.5 flex items-center gap-1.5">
+              <MediaTypeBadge mediaType={item.media_type} />
+            </div>
             <h3 className="truncate text-base font-semibold" title={item.title}>
               {item.title}
             </h3>
@@ -49,7 +65,7 @@ export function WatchlistCard({ item, onEdit, onRemove }: Props) {
 
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-400">
           {item.year && <span>{item.year}</span>}
-          {formatRuntime(item.runtime) && <span>{formatRuntime(item.runtime)}</span>}
+          {meta && <span>{meta}</span>}
           {item.tmdb_rating !== null && item.tmdb_rating > 0 && (
             <span className="inline-flex items-center gap-1">
               <span className="text-amber-400">{'\u2605'}</span>

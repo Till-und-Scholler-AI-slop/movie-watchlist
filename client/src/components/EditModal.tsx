@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { WatchlistItem, WatchStatus } from '../types.js';
 import { STATUS_LIST, STATUS_LABELS } from './StatusBadge.js';
+import { MediaTypeBadge } from './MediaTypeBadge.js';
 import { Stars } from './Stars.js';
 import { api } from '../api.js';
 
@@ -8,6 +9,16 @@ interface Props {
   item: WatchlistItem;
   onClose: () => void;
   onSaved: (item: WatchlistItem) => void;
+}
+
+function formatShowInfo(item: WatchlistItem): string | null {
+  const seasons = item.number_of_seasons;
+  const episodes = item.number_of_episodes;
+  if (!seasons && !episodes) return null;
+  const parts: string[] = [];
+  if (seasons) parts.push(`${seasons} Staffel${seasons !== 1 ? 'n' : ''}`);
+  if (episodes) parts.push(`${episodes} Episode${episodes !== 1 ? 'n' : ''}`);
+  return parts.join(' · ');
 }
 
 export function EditModal({ item, onClose, onSaved }: Props) {
@@ -48,6 +59,10 @@ export function EditModal({ item, onClose, onSaved }: Props) {
     item.original_title !== item.title &&
     item.original_title.length > 0;
 
+  const showInfo = item.media_type === 'tv' ? formatShowInfo(item) : null;
+  const notesPlaceholder =
+    item.media_type === 'tv' ? 'Was denkst du über die Serie?' : 'Was denkst du über den Film?';
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
@@ -59,6 +74,9 @@ export function EditModal({ item, onClose, onSaved }: Props) {
       >
         <div className="mb-4 flex items-start justify-between">
           <div className="min-w-0">
+            <div className="mb-1">
+              <MediaTypeBadge mediaType={item.media_type} />
+            </div>
             <h2 className="truncate text-lg font-semibold" title={item.title}>{item.title}</h2>
             {showOriginal && (
               <p className="truncate text-xs italic text-slate-500" title={item.original_title ?? undefined}>
@@ -67,6 +85,7 @@ export function EditModal({ item, onClose, onSaved }: Props) {
             )}
             <p className="mt-1 text-xs text-slate-400">
               {item.year}
+              {showInfo ? ` · ${showInfo}` : ''}
               {item.director ? ` · ${item.director}` : ''}
             </p>
             {item.tagline && (
@@ -108,7 +127,7 @@ export function EditModal({ item, onClose, onSaved }: Props) {
 
           <div>
             <label className="mb-2 block text-xs font-medium uppercase tracking-wide text-slate-400">
-              Your rating
+              Deine Bewertung
             </label>
             <div className="flex items-center gap-3">
               <Stars value={rating} onChange={setRating} size="lg" />
@@ -126,13 +145,13 @@ export function EditModal({ item, onClose, onSaved }: Props) {
 
           <div>
             <label className="mb-2 block text-xs font-medium uppercase tracking-wide text-slate-400">
-              Notes
+              Notizen
             </label>
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={4}
-              placeholder="Was denkst du über den Film?"
+              placeholder={notesPlaceholder}
               className="w-full resize-none rounded-lg border border-[var(--color-border)] bg-[var(--color-canvas)] p-3 text-sm text-slate-100 outline-none focus:border-amber-500/50"
             />
           </div>
@@ -146,7 +165,7 @@ export function EditModal({ item, onClose, onSaved }: Props) {
             onClick={onClose}
             className="rounded-lg px-4 py-2 text-sm font-medium text-slate-300 hover:bg-[var(--color-surface-2)]"
           >
-            Cancel
+            Abbrechen
           </button>
           <button
             type="button"
@@ -154,7 +173,7 @@ export function EditModal({ item, onClose, onSaved }: Props) {
             disabled={saving}
             className="rounded-lg bg-[var(--color-accent)] px-4 py-2 text-sm font-semibold text-black transition-colors hover:bg-amber-300 disabled:opacity-50"
           >
-            {saving ? 'Saving…' : 'Save'}
+            {saving ? 'Speichern…' : 'Speichern'}
           </button>
         </div>
       </div>

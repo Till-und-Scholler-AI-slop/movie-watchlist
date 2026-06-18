@@ -1,16 +1,17 @@
 import { useState } from 'react';
-import type { SearchMovie } from '../types.js';
+import type { SearchTitle } from '../types.js';
 import { api } from '../api.js';
 import { Poster } from './Poster.js';
+import { MediaTypeBadge } from './MediaTypeBadge.js';
 
 interface Props {
-  movie: SearchMovie;
+  title: SearchTitle;
   disabled?: boolean;
   disabledReason?: string;
   onAdded: () => void;
 }
 
-export function SearchResultCard({ movie, disabled, disabledReason, onAdded }: Props) {
+export function SearchResultCard({ title, disabled, disabledReason, onAdded }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
@@ -19,7 +20,7 @@ export function SearchResultCard({ movie, disabled, disabledReason, onAdded }: P
     setBusy(true);
     setError(null);
     try {
-      await api.addMovie(movie.tmdb_id);
+      await api.addTitle(title.tmdb_id, title.media_type);
       setDone(true);
       onAdded();
     } catch (e) {
@@ -30,31 +31,34 @@ export function SearchResultCard({ movie, disabled, disabledReason, onAdded }: P
   }
 
   const showOriginal =
-    movie.title_original &&
-    movie.title_original !== movie.title_de &&
-    movie.title_original.length > 0;
+    title.title_original &&
+    title.title_original !== title.title_de &&
+    title.title_original.length > 0;
 
   return (
     <div className="group flex flex-col overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]">
       <div className="relative aspect-[2/3] w-full overflow-hidden">
-        <Poster src={movie.poster_url} alt={movie.title_de} className="h-full w-full" />
+        <Poster src={title.poster_url} alt={title.title_de} className="h-full w-full" />
         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
+        <div className="absolute left-2 top-2">
+          <MediaTypeBadge mediaType={title.media_type} />
+        </div>
       </div>
       <div className="flex flex-1 flex-col gap-1.5 p-3">
-        <h3 className="line-clamp-2 text-sm font-semibold leading-tight" title={movie.title_de}>
-          {movie.title_de}
+        <h3 className="line-clamp-2 text-sm font-semibold leading-tight" title={title.title_de}>
+          {title.title_de}
         </h3>
         {showOriginal && (
-          <p className="line-clamp-1 text-xs italic text-slate-500" title={movie.title_original}>
-            {movie.title_original}
+          <p className="line-clamp-1 text-xs italic text-slate-500" title={title.title_original}>
+            {title.title_original}
           </p>
         )}
         <div className="flex items-center gap-2 text-xs text-slate-400">
-          <span>{movie.year}</span>
-          {movie.vote_average > 0 && (
+          <span>{title.year}</span>
+          {title.vote_average > 0 && (
             <span className="inline-flex items-center gap-1">
               <span className="text-amber-400">{'\u2605'}</span>
-              {movie.vote_average.toFixed(1)}
+              {title.vote_average.toFixed(1)}
             </span>
           )}
         </div>

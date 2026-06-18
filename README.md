@@ -1,24 +1,30 @@
-# Movie Watchlist
+# Movie & Series Watchlist
 
-A self-hosted app to search for movies (via TMDB), build a watchlist, rate them,
-take notes, and track stats. Full-stack: React + Vite + Tailwind on the front,
-Express + SQLite (Node's built-in `node:sqlite`) on the back, shipped as a single Docker image.
+A self-hosted app to search for **movies and TV shows** (via TMDB), build a
+watchlist, rate them, take notes, and track stats. Full-stack: React + Vite +
+Tailwind on the front, Express + SQLite (Node's built-in `node:sqlite`) on the
+back, shipped as a single Docker image.
 
 The UI is in German. Search matches **both German and English titles simultaneously**
 (e.g. "Herr der Ringe" and "Lord of the Rings" find the same film) via parallel
-`de-DE` and `en-US` TMDB queries that are merged and de-duplicated.
+`de-DE` and `en-US` TMDB `/search/multi` queries that are merged and de-duplicated.
 
 ## Features
 
-- **Search** movies via TMDB with dual-language matching (German + English).
+- **Search** movies and TV shows via TMDB `/search/multi` (dual-language matching).
   German title shown primary, original title secondary (italic, gray).
+  Film/Serie badge on every card.
 - **Watchlist** with three statuses: _will sehen_, _am schauen_, _gesehen_.
-- **Rate** movies 1-5 stars and add personal notes.
-- **Filter** the list by status.
-- **Stats dashboard**: totals, average rating, top genres (watched).
+- **Filter** the list by media type (Alle / Filme / Serien) **and** by status
+  — both combinable.
+- **Rate** titles 1-5 stars and add personal notes.
+- **Stats dashboard**: totals, average rating, breakdown by media type,
+  top genres (watched).
+- **TV-aware cards**: shows display "X Staffeln · Y Episoden" instead of runtime;
+  creator(s) shown instead of director.
 - **Persistent**: everything stored in SQLite on disk.
 - **Single container**: serves the API and the built UI on one port.
-- **Demo catalog**: 30 curated films with German titles and TMDB metadata
+- **Demo catalog**: 30 films + 8 TV shows with German titles and TMDB metadata
   work out-of-the-box without an API key.
 
 ## Quick start (Docker, for your VPS)
@@ -66,16 +72,16 @@ The Vite dev server proxies `/api/*` to the backend.
 
 ## API
 
-| Method  | Path                     | Description                                    |
-| ------- | ------------------------ | ---------------------------------------------- |
-| GET     | `/api/health`            | Health check                                   |
-| GET     | `/api/search?q=&page=`   | Search TMDB (dual de-DE + en-US, merged)       |
-| GET     | `/api/search/:tmdbId`    | Get full movie details from TMDB               |
-| GET     | `/api/watchlist?status=` | List entries (optional status filter)          |
-| POST    | `/api/watchlist`         | Add a movie by `tmdb_id`                       |
-| PATCH   | `/api/watchlist/:id`     | Update status / rating / notes                 |
-| DELETE  | `/api/watchlist/:id`     | Remove an entry                                |
-| GET     | `/api/stats`             | Summary + genre breakdown                      |
+| Method  | Path                              | Description                                          |
+| ------- | --------------------------------- | ---------------------------------------------------- |
+| GET     | `/api/health`                     | Health check                                         |
+| GET     | `/api/search?q=&page=`            | Search TMDB multi (movies + TV, dual de-DE + en-US) |
+| GET     | `/api/search/:tmdbId?type=movie\|tv` | Get full title details from TMDB                  |
+| GET     | `/api/watchlist?status=&media_type=` | List entries (optional status + media_type filter) |
+| POST    | `/api/watchlist`                  | Add a title by `tmdb_id` + `media_type`              |
+| PATCH   | `/api/watchlist/:id`              | Update status / rating / notes                       |
+| DELETE  | `/api/watchlist/:id`              | Remove an entry                                      |
+| GET     | `/api/stats`                      | Summary (incl. movies/shows split) + genre breakdown |
 
 ## Project layout
 
@@ -84,16 +90,16 @@ The Vite dev server proxies `/api/*` to the backend.
 ├── server/            Express + node:sqlite (TypeScript)
 │   ├── src/
 │   │   ├── index.ts       app entry, serves API + static UI
-│   │   ├── db.ts          schema + queries (node:sqlite)
-│   │   ├── tmdb.ts        TMDB client + dual-language search + fallback catalog
+│   │   ├── db.ts          schema + queries (node:sqlite); UNIQUE(tmdb_id, media_type)
+│   │   ├── tmdb.ts        TMDB multi-search + movie/tv detail branching + fallback catalog
 │   │   └── routes/        search, watchlist, stats
 │   └── data/              SQLite file (runtime, gitignored)
 ├── client/            React + Vite + Tailwind (TypeScript)
 │   └── src/
-│       ├── App.tsx        views: search / watchlist / stats
+│       ├── App.tsx        views: search / watchlist / stats; dual filter (media + status)
 │       ├── api.ts         typed fetch wrapper + TMDB image URL helper
-│       ├── types.ts       shared types
-│       └── components/    Stars, Poster, cards, modal, stats
+│       ├── types.ts       shared types (SearchTitle, WatchlistItem with media_type)
+│       └── components/    Stars, Poster, cards, modal, stats, MediaTypeBadge
 ├── Dockerfile         multi-stage build -> single slim image
 ├── docker-compose.yml one service + persistent volume
 └── .env.example       TMDB_API_KEY + PORT
@@ -109,6 +115,14 @@ The Vite dev server proxies `/api/*` to the backend.
 ## TMDB rate limits
 
 TMDB allows roughly 40 requests per second. Each search triggers two parallel
-requests (one for `de-DE`, one for `en-US`) that are merged — well within the
-limit. Adding a movie triggers one detail request; all metadata is then cached
-in SQLite so subsequent views hit the local DB, not TMDB.
+requests (one for `de-DE`, one for `en-US`) to `/search/multi` that are merged —
+well within the limit. Adding a title triggers one detail request (`/movie/{id}`
+or `/tv/{id}`); all metadata is then cached in SQLite so subsequent views hit
+the local DB, not TMDB.
+
+## Notes on TMDB movie/TV id spaces
+
+TMDB movie IDs and TV IDs are **separate namespaces** — the same number can
+refer to a movie and to a TV show. The schema therefore uses a composite unique
+constraint `UNIQUE(tmdb_id, media_type)` so the same ID can exist once as a
+movie and once as a TV show without conflict.

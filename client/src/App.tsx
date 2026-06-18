@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { SearchMovie, WatchlistItem, WatchStatus, Stats } from './types.js';
+import type { SearchTitle, WatchlistItem, WatchStatus, MediaType, Stats } from './types.js';
 import { api } from './api.js';
 import { SearchResultCard } from './components/SearchResultCard.js';
 import { WatchlistCard } from './components/WatchlistCard.js';
@@ -8,13 +8,14 @@ import { StatsBar } from './components/StatsBar.js';
 import { STATUS_LIST, STATUS_LABELS } from './components/StatusBadge.js';
 
 type View = 'search' | 'watchlist' | 'stats';
+type MediaFilter = 'all' | MediaType;
 
 export function App() {
   const [view, setView] = useState<View>('search');
 
   // Search state
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<SearchMovie[]>([]);
+  const [results, setResults] = useState<SearchTitle[]>([]);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [usingFallback, setUsingFallback] = useState(false);
@@ -24,7 +25,8 @@ export function App() {
 
   // Watchlist state
   const [items, setItems] = useState<WatchlistItem[]>([]);
-  const [filter, setFilter] = useState<WatchStatus | 'all'>('all');
+  const [statusFilter, setStatusFilter] = useState<WatchStatus | 'all'>('all');
+  const [mediaFilter, setMediaFilter] = useState<MediaFilter>('all');
   const [listLoading, setListLoading] = useState(false);
 
   // Stats
@@ -33,7 +35,10 @@ export function App() {
   // Modal
   const [editing, setEditing] = useState<WatchlistItem | null>(null);
 
-  const watchlistTmdbIds = useMemo(() => new Set(items.map((i) => i.tmdb_id)), [items]);
+  const watchlistKeys = useMemo(
+    () => new Set(items.map((i) => `${i.tmdb_id}-${i.media_type}`)),
+    [items],
+  );
 
   const refreshWatchlist = useCallback(async () => {
     setListLoading(true);
@@ -71,11 +76,11 @@ export function App() {
     setSearchError(null);
     try {
       const res = await api.search(q, page);
-      setResults(res.movies);
+      setResults(res.titles);
       setSearchTotal(res.total);
       setSearchPage(page);
       setUsingFallback(res.using_fallback);
-      if (res.error && res.movies.length === 0) setSearchError(res.error);
+      if (res.error && res.titles.length === 0) setSearchError(res.error);
     } catch (e) {
       setSearchError(e instanceof Error ? e.message : 'Search failed');
       setResults([]);
@@ -93,16 +98,20 @@ export function App() {
   }, [query, runSearch]);
 
   const filteredItems = useMemo(() => {
-    if (filter === 'all') return items;
-    return items.filter((i) => i.status === filter);
-  }, [items, filter]);
+    return items.filter((i) => {
+      if (statusFilter !== 'all' && i.status !== statusFilter) return false;
+      if (mediaFilter !== 'all' && i.media_type !== mediaFilter) return false;
+      return true;
+    });
+  }, [items, statusFilter, mediaFilter]);
 
   async function handleAdded() {
     await Promise.all([refreshWatchlist(), refreshStats()]);
   }
 
   async function handleRemove(item: WatchlistItem) {
-    if (!confirm(`„${item.title}" aus deiner Watchlist entfernen?`)) return;
+    const noun = item.media_type === 'tv' ? 'Serie' : 'Film';
+    if (!confirm(`„${item.title}" (${noun}) aus deiner Watchlist entfernen?`)) return;
     try {
       await api.removeItem(item.id);
       await Promise.all([refreshWatchlist(), refreshStats()]);
@@ -117,6 +126,15 @@ export function App() {
   }
 
   const totalPages = Math.ceil(searchTotal / 10);
+
+  const counts = useMemo(() => {
+    const all = items.length;
+    const movies = items.filter((i) => i.media_type === 'movie').length;
+    const shows = items.filter((i) => i.media_type === 'tv').length;
+    const byStatus: Record<WatchStatus, number> = { want: 0, watching: 0, watched: 0 };
+    for (const i of items) byStatus[i.status]++;
+    return { all, movies, shows, byStatus };
+  }, [items]);
 
   return (
     <div className="min-h-full">
@@ -138,7 +156,11 @@ export function App() {
                     : 'text-slate-300 hover:bg-[var(--color-surface-2)]'
                 }`}
               >
-                {v === 'watchlist' ? `Watchlist (${items.length})` : v === 'stats' ? 'Stats' : 'Suche'}
+                {v === 'watchlist'
+                  ? `Watchlist (${items.length})`
+                  : v === 'stats'
+                    ? 'Stats'
+                    : 'Suche'}
               </button>
             ))}
           </nav>
@@ -152,7 +174,7 @@ export function App() {
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Film suchen … (deutsch oder englisch)"
+                placeholder="Film oder Serie suchen … (deutsch oder englisch)"
                 autoFocus
                 className="w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] py-3 pl-11 pr-4 text-base text-slate-100 outline-none focus:border-amber-500/50"
               />
@@ -169,7 +191,8 @@ export function App() {
             {usingFallback && query.trim() && (
               <p className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
                 Kein <code>TMDB_API_KEY</code> gesetzt — eingeschränkter Demo-Katalog aktiv.
-                Setze einen Key in deiner <code>.env</code> für die volle TMDB-Datenbank.
+                Setze einen Key in deiner <code>.env</code> für die volle TMDB-Datenbank
+                (Filme + Serien).
               </p>
             )}
             {searchError && (
@@ -179,17 +202,17 @@ export function App() {
             )}
 
             {query.trim() && !searching && results.length === 0 && !searchError && (
-              <p className="py-12 text-center text-sm text-slate-500">Keine Filme gefunden.</p>
+              <p className="py-12 text-center text-sm text-slate-500">Keine Treffer.</p>
             )}
 
             {results.length > 0 && (
               <>
                 <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-                  {results.map((m) => (
+                  {results.map((t) => (
                     <SearchResultCard
-                      key={m.tmdb_id}
-                      movie={m}
-                      disabled={watchlistTmdbIds.has(m.tmdb_id)}
+                      key={`${t.tmdb_id}-${t.media_type}`}
+                      title={t}
+                      disabled={watchlistKeys.has(`${t.tmdb_id}-${t.media_type}`)}
                       disabledReason="Bereits in deiner Watchlist"
                       onAdded={handleAdded}
                     />
@@ -225,8 +248,8 @@ export function App() {
             {!query.trim() && (
               <div className="py-16 text-center">
                 <p className="text-sm text-slate-500">
-                  Tippe einen Titel ein, um Filme zu suchen und zur Watchlist hinzuzufügen.
-                  Deutsch und Englisch gleichzeitig.
+                  Tippe einen Titel ein, um Filme und Serien zu suchen und zur Watchlist
+                  hinzuzufügen. Deutsch und Englisch gleichzeitig.
                 </p>
               </div>
             )}
@@ -235,35 +258,71 @@ export function App() {
 
         {view === 'watchlist' && (
           <section>
-            <div className="mb-4 flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setFilter('all')}
-                className={`rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
-                  filter === 'all'
-                    ? 'border-amber-500 bg-amber-500/15 text-amber-300'
-                    : 'border-[var(--color-border)] text-slate-300 hover:bg-[var(--color-surface-2)]'
-                }`}
-              >
-                Alle ({items.length})
-              </button>
-              {STATUS_LIST.map((s) => {
-                const count = items.filter((i) => i.status === s).length;
-                return (
+            <div className="mb-4 space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setMediaFilter('all')}
+                  className={`rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
+                    mediaFilter === 'all'
+                      ? 'border-amber-500 bg-amber-500/15 text-amber-300'
+                      : 'border-[var(--color-border)] text-slate-300 hover:bg-[var(--color-surface-2)]'
+                  }`}
+                >
+                  Alle ({counts.all})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMediaFilter('movie')}
+                  className={`rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
+                    mediaFilter === 'movie'
+                      ? 'border-sky-500 bg-sky-500/15 text-sky-300'
+                      : 'border-[var(--color-border)] text-slate-300 hover:bg-[var(--color-surface-2)]'
+                  }`}
+                >
+                  Filme ({counts.movies})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMediaFilter('tv')}
+                  className={`rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
+                    mediaFilter === 'tv'
+                      ? 'border-violet-500 bg-violet-500/15 text-violet-300'
+                      : 'border-[var(--color-border)] text-slate-300 hover:bg-[var(--color-surface-2)]'
+                  }`}
+                >
+                  Serien ({counts.shows})
+                </button>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 border-l-2 border-[var(--color-border)] pl-3">
+                <span className="text-xs uppercase tracking-wide text-slate-500">Status:</span>
+                <button
+                  type="button"
+                  onClick={() => setStatusFilter('all')}
+                  className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                    statusFilter === 'all'
+                      ? 'border-amber-500 bg-amber-500/15 text-amber-300'
+                      : 'border-[var(--color-border)] text-slate-300 hover:bg-[var(--color-surface-2)]'
+                  }`}
+                >
+                  Alle
+                </button>
+                {STATUS_LIST.map((s) => (
                   <button
                     key={s}
                     type="button"
-                    onClick={() => setFilter(s)}
-                    className={`rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
-                      filter === s
+                    onClick={() => setStatusFilter(s)}
+                    className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                      statusFilter === s
                         ? 'border-amber-500 bg-amber-500/15 text-amber-300'
                         : 'border-[var(--color-border)] text-slate-300 hover:bg-[var(--color-surface-2)]'
                     }`}
                   >
-                    {STATUS_LABELS[s]} ({count})
+                    {STATUS_LABELS[s]} ({counts.byStatus[s]})
                   </button>
-                );
-              })}
+                ))}
+              </div>
             </div>
 
             {listLoading && items.length === 0 ? (
@@ -272,7 +331,7 @@ export function App() {
               <div className="py-16 text-center">
                 <p className="text-sm text-slate-500">
                   {items.length === 0
-                    ? 'Deine Watchlist ist leer. Suche und füge Filme hinzu!'
+                    ? 'Deine Watchlist ist leer. Suche und füge Titel hinzu!'
                     : 'Keine Einträge für diesen Filter.'}
                 </p>
                 {items.length === 0 && (
@@ -308,7 +367,7 @@ export function App() {
             <StatsBar stats={stats} />
             {stats && stats.summary.total === 0 && (
               <p className="mt-8 text-center text-sm text-slate-500">
-                Füge Filme zu deiner Watchlist hinzu, um hier Statistiken zu sehen.
+                Füge Titel zu deiner Watchlist hinzu, um hier Statistiken zu sehen.
               </p>
             )}
           </section>
@@ -320,7 +379,7 @@ export function App() {
       )}
 
       <footer className="mx-auto max-w-6xl px-4 py-8 text-center text-xs text-slate-600">
-        Movie Watchlist · Daten von TMDB · {new Date().getFullYear()}
+        Movie Watchlist · Daten von TMDB · Filme & Serien · {new Date().getFullYear()}
       </footer>
     </div>
   );

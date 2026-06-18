@@ -1,7 +1,9 @@
 export type WatchStatus = 'want' | 'watching' | 'watched';
+export type MediaType = 'movie' | 'tv';
 
-export interface SearchMovie {
+export interface SearchTitle {
   tmdb_id: number;
+  media_type: MediaType;
   title_de: string;
   title_original: string;
   year: string;
@@ -11,7 +13,7 @@ export interface SearchMovie {
 }
 
 export interface SearchResponse {
-  movies: SearchMovie[];
+  titles: SearchTitle[];
   total: number;
   page: number;
   error?: string;
@@ -21,6 +23,7 @@ export interface SearchResponse {
 export interface WatchlistItem {
   id: number;
   tmdb_id: number;
+  media_type: MediaType;
   title: string;
   original_title: string | null;
   year: string | null;
@@ -33,6 +36,8 @@ export interface WatchlistItem {
   runtime: number | null;
   tmdb_rating: number | null;
   imdb_id: string | null;
+  number_of_seasons: number | null;
+  number_of_episodes: number | null;
   status: WatchStatus;
   rating: number | null;
   notes: string | null;
@@ -47,6 +52,8 @@ export interface Stats {
     watching: number;
     want: number;
     avg_rating: number;
+    movies: number;
+    shows: number;
   };
   genres: { name: string; count: number }[];
 }

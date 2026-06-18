@@ -3,6 +3,7 @@ import type {
   WatchlistItem,
   Stats,
   WatchStatus,
+  MediaType,
   WatchlistUpdate,
 } from './types.js';
 
@@ -41,15 +42,21 @@ export const api = {
     return http<SearchResponse>(`${API}/search?q=${q}&page=${page}`);
   },
 
-  listWatchlist(status?: WatchStatus): Promise<{ items: WatchlistItem[] }> {
-    const qs = status ? `?status=${status}` : '';
+  listWatchlist(
+    status?: WatchStatus,
+    mediaType?: MediaType,
+  ): Promise<{ items: WatchlistItem[] }> {
+    const params: string[] = [];
+    if (status) params.push(`status=${status}`);
+    if (mediaType) params.push(`media_type=${mediaType}`);
+    const qs = params.length ? `?${params.join('&')}` : '';
     return http(`${API}/watchlist${qs}`);
   },
 
-  addMovie(tmdb_id: number): Promise<{ item: WatchlistItem }> {
+  addTitle(tmdb_id: number, media_type: MediaType): Promise<{ item: WatchlistItem }> {
     return http(`${API}/watchlist`, {
       method: 'POST',
-      body: JSON.stringify({ tmdb_id }),
+      body: JSON.stringify({ tmdb_id, media_type }),
     });
   },
 

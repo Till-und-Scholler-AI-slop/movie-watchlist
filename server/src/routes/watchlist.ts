@@ -1,27 +1,37 @@
 import { Router } from 'express';
-import { addMovie, list, getById, updateEntry, removeEntry, type WatchStatus } from '../db.js';
-import { getMovieDetail, genresFromDetail, directorFromDetail, type TmdbDetail } from '../tmdb.js';
+import { addTitle, list, getById, updateEntry, removeEntry, type WatchStatus, type MediaType } from '../db.js';
+import { getTitleDetail, genresFromDetail, directorFromDetail, type TmdbDetail } from '../tmdb.js';
 
 export const watchlistRouter = Router();
 
 watchlistRouter.get('/', (req, res) => {
   const status = req.query.status as WatchStatus | undefined;
-  const valid: WatchStatus[] = ['want', 'watching', 'watched'];
-  const filter = status && valid.includes(status) ? status : undefined;
-  res.json({ items: list(filter) });
+  const validStatuses: WatchStatus[] = ['want', 'watching', 'watched'];
+  const statusFilter = status && validStatuses.includes(status) ? status : undefined;
+
+  const mediaTypeParam = req.query.media_type as MediaType | undefined;
+  const validMediaTypes: MediaType[] = ['movie', 'tv'];
+  const mediaFilter =
+    mediaTypeParam && validMediaTypes.includes(mediaTypeParam) ? mediaTypeParam : undefined;
+
+  res.json({ items: list(statusFilter, mediaFilter) });
 });
 
 watchlistRouter.post('/', async (req, res) => {
-  const { tmdb_id } = req.body ?? {};
+  const { tmdb_id, media_type } = req.body ?? {};
   if (typeof tmdb_id !== 'number' || !Number.isFinite(tmdb_id)) {
     return res.status(400).json({ error: 'tmdb_id (number) is required' });
   }
+  if (media_type !== 'movie' && media_type !== 'tv') {
+    return res.status(400).json({ error: 'media_type must be "movie" or "tv"' });
+  }
 
-  const detail: TmdbDetail | null = await getMovieDetail(tmdb_id);
-  if (!detail) return res.status(404).json({ error: 'Movie not found on TMDB' });
+  const detail: TmdbDetail | null = await getTitleDetail(tmdb_id, media_type);
+  if (!detail) return res.status(404).json({ error: 'Title not found on TMDB' });
 
-  const result = addMovie({
+  const result = addTitle({
     tmdb_id: detail.id,
+    media_type: detail.media_type,
     title: detail.title || detail.original_title,
     original_title: detail.original_title || null,
     year: detail.release_date ? detail.release_date.slice(0, 4) : null,
@@ -34,10 +44,14 @@ watchlistRouter.post('/', async (req, res) => {
     runtime: detail.runtime,
     tmdb_rating: detail.vote_average,
     imdb_id: detail.imdb_id,
+    number_of_seasons: detail.number_of_seasons,
+    number_of_episodes: detail.number_of_episodes,
   });
 
-  if (!result.item) return res.status(404).json({ error: 'Movie not found on TMDB' });
-  if (!result.created) return res.status(409).json({ error: 'Already in watchlist', item: result.item });
+  if (!result.item) return res.status(404).json({ error: 'Title not found on TMDB' });
+  if (!result.created) {
+    return res.status(409).json({ error: 'Already in watchlist', item: result.item });
+  }
   res.status(201).json({ item: result.item });
 });
 
