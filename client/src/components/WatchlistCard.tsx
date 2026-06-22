@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { WatchlistItem, WatchStatus } from '../types.js';
 import { api, posterUrlFromPath } from '../api.js';
 import { Poster } from './Poster.js';
@@ -50,6 +50,13 @@ export function WatchlistCard({ item, onOpen, onRemove, onUpdated }: Props) {
 
   const [status, setStatus] = useState<WatchStatus>(item.status);
   const [pending, setPending] = useState(false);
+
+  // Re-sync local status when the parent's item.status changes after a refresh
+  // (e.g. overlay save, or another session updating it) — but not mid-flight,
+  // so an optimistic change isn't clobbered before the POST lands.
+  useEffect(() => {
+    if (!pending) setStatus(item.status);
+  }, [item.status, pending]);
 
   async function quickStatus(next: WatchStatus) {
     if (next === status || pending) return;
