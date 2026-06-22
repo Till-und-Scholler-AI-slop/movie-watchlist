@@ -74,7 +74,8 @@ The Vite dev server proxies `/api/*` to the backend.
 
 | Method  | Path                              | Description                                          |
 | ------- | --------------------------------- | ---------------------------------------------------- |
-| GET     | `/api/health`                     | Health check                                         |
+| GET     | `/api/health`                     | Health check (no auth)                               |
+| GET     | `/api/me`                         | Current user (uid, username, email, name)            |
 | GET     | `/api/search?q=&page=`            | Search TMDB multi (movies + TV, dual de-DE + en-US) |
 | GET     | `/api/search/:tmdbId?type=movie\|tv` | Get full title details from TMDB                  |
 | GET     | `/api/watchlist?status=&media_type=` | List entries (optional status + media_type filter) |
@@ -119,6 +120,68 @@ requests (one for `de-DE`, one for `en-US`) to `/search/multi` that are merged �
 well within the limit. Adding a title triggers one detail request (`/movie/{id}`
 or `/tv/{id}`); all metadata is then cached in SQLite so subsequent views hit
 the local DB, not TMDB.
+
+## Multi-User & Authentik
+
+The app supports per-user watchlists. Each user's entries are isolated by
+`user_id` in the database (`UNIQUE(user_id, tmdb_id, media_type)`).
+
+### Dev mode (default)
+
+Without any extra config, the app uses a fixed local user (`uid="dev"`).
+This keeps local development single-user — no Authentik, no nginx needed.
+
+### Production (behind Authentik + nginx)
+
+Set `TRUST_AUTHENTIK_HEADERS=1` in `.env`. The reverse proxy (nginx with
+Authentik forward-auth) injects `X-authentik-uid`, `X-authentik-username`,
+`X-authentik-email`, and `X-authentik-name` headers on every authenticated
+request. The app upserts a `users` row on first sight and scopes all
+watchlist queries to that user.
+
+**The `X-authentik-*` headers are only trustworthy because:**
+1. nginx sets them from the `auth_request` subrequest (not from the client).
+2. The app port is bound to `127.0.0.1` (never public) — clients cannot
+   bypass the proxy.
+
+**Optional shared secret** (`AUTHENTIK_SHARED_SECRET`): if set, nginx must
+forward the same value in `X-Authentik-Secret`. This adds defense-in-depth
+against header spoofing if the port is ever accidentally exposed. Generate
+with `openssl rand -hex 32` and add
+`proxy_set_header X-Authentik-Secret "<value>";` to the nginx vHost.
+
+### One-time migration of existing data
+
+If upgrading an existing single-user instance, set `MIGRATE_LEGACY_OWNER_UID`
+to the Authentik uid that should own the pre-existing rows. On next boot the
+schema is migrated (table recreated, rows backfilled). Leave empty in dev.
+
+### Two rules for contributors
+
+> **Never remove `user_id` scoping from queries.** Every `watchlist` query
+> must filter by `user_id`. Without it, all users share one bucket and the
+> production instance corrupts.
+
+> **Never bind the port publicly in `docker-compose.yml`.** The upstream
+> compose uses `"8787:8787"` (public) — the production deploy script rewrites
+> this to `"127.0.0.1:8787:8787"` on every pull. If you change the upstream
+> format, the deploy aborts (safety). Keep the public binding in the repo
+> (it's the upstream default); the deploy handles the patch.
+
+### Env vars
+
+| Var | Default | Purpose |
+| --- | ------- | ------- |
+| `TRUST_AUTHENTIK_HEADERS` | _(empty)_ | Set to `1` to trust `X-authentik-*` headers. |
+| `AUTHENTIK_SHARED_SECRET` | _(empty)_ | Optional shared secret for header-spoofing defense. |
+| `MIGRATE_LEGACY_OWNER_UID` | _(empty)_ | One-time: assign existing rows to this uid. |
+
+### Schema changes
+
+Schema migrations run automatically on container boot (idempotent). The
+production deploy is auto via cron-pull + `docker compose up -d --build`, so
+any merged change goes live within ~5 min. **If a migration is risky or
+non-idempotent, discuss in the PR first.**
 
 ## Notes on TMDB movie/TV id spaces
 

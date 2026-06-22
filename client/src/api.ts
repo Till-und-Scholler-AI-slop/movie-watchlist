@@ -5,6 +5,7 @@ import type {
   WatchStatus,
   MediaType,
   WatchlistUpdate,
+  Me,
 } from './types.js';
 
 const API = '/api';
@@ -73,5 +74,9 @@ export const api = {
 
   stats(): Promise<Stats> {
     return http(`${API}/stats`);
+  },
+
+  me(): Promise<Me> {
+    return http<Me>(`${API}/me`);
   },
 };

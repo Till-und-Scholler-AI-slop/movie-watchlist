@@ -3,9 +3,9 @@ import { stats, genreStats } from '../db.js';
 
 export const statsRouter = Router();
 
-statsRouter.get('/', (_req, res) => {
+statsRouter.get('/', (req, res) => {
   res.json({
-    summary: stats(),
-    genres: genreStats(),
+    summary: stats(req.user!.uid),
+    genres: genreStats(req.user!.uid),
   });
 });

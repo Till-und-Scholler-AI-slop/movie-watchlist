@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { SearchTitle, WatchlistItem, WatchStatus, MediaType, Stats } from './types.js';
+import type { SearchTitle, WatchlistItem, WatchStatus, MediaType, Stats, Me } from './types.js';
 import { api } from './api.js';
 import { SearchResultCard } from './components/SearchResultCard.js';
 import { WatchlistCard } from './components/WatchlistCard.js';
@@ -35,6 +35,9 @@ export function App() {
   // Modal
   const [editing, setEditing] = useState<WatchlistItem | null>(null);
 
+  // Current user (for the badge + logout link)
+  const [me, setMe] = useState<Me | null>(null);
+
   const watchlistKeys = useMemo(
     () => new Set(items.map((i) => `${i.tmdb_id}-${i.media_type}`)),
     [items],
@@ -63,6 +66,7 @@ export function App() {
   useEffect(() => {
     void refreshWatchlist();
     void refreshStats();
+    void api.me().then(setMe).catch(() => setMe(null));
   }, [refreshWatchlist, refreshStats]);
 
   const runSearch = useCallback(async (q: string, page = 1) => {
@@ -164,6 +168,19 @@ export function App() {
               </button>
             ))}
           </nav>
+          {me && (
+            <div className="flex items-center gap-2 text-xs text-slate-400">
+              <span className="hidden sm:inline">Angemeldet als {me.name || me.username || me.uid}</span>
+              {me.uid !== 'dev' && (
+                <a
+                  href={`/outpost.goauthentik.io/end?rd=${encodeURIComponent(window.location.origin + '/')}`}
+                  className="rounded-md border border-[var(--color-border)] px-2 py-1 text-slate-300 hover:bg-[var(--color-surface-2)]"
+                >
+                  Abmelden
+                </a>
+              )}
+            </div>
+          )}
         </div>
       </header>
 
