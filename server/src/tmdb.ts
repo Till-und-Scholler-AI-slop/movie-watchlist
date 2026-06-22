@@ -6,6 +6,7 @@ const IMG_BASE = 'https://image.tmdb.org/t/p';
 
 const POSTER_SIZE = 'w500';
 const BACKDROP_SIZE = 'w780';
+const PROFILE_SIZE = 'w185';
 
 export type MediaType = 'movie' | 'tv';
 
@@ -17,6 +18,11 @@ export function posterUrl(path: string | null | undefined): string | null {
 export function backdropUrl(path: string | null | undefined): string | null {
   if (!path) return null;
   return `${IMG_BASE}/${BACKDROP_SIZE}${path}`;
+}
+
+export function profileUrl(path: string | null | undefined): string | null {
+  if (!path) return null;
+  return `${IMG_BASE}/${PROFILE_SIZE}${path}`;
 }
 
 export interface MergedSearchTitle {
@@ -53,6 +59,42 @@ export interface TmdbDetail {
   number_of_episodes: number | null;
   credits?: { crew: { job: string; name: string }[] };
   created_by?: { name: string }[];
+}
+
+export interface CastMember {
+  id: number;
+  name: string;
+  character: string;
+  profile_path: string | null;
+  profile_url: string | null;
+}
+
+export interface Video {
+  key: string;
+  name: string;
+  site: string;
+  type: string;
+  official: boolean;
+}
+
+export interface SimilarTitle {
+  tmdb_id: number;
+  media_type: MediaType;
+  title_de: string;
+  year: string;
+  poster_path: string | null;
+  poster_url: string | null;
+  vote_average: number;
+  overview_de: string;
+}
+
+export interface TitleExtended {
+  detail: TmdbDetail;
+  cast: CastMember[];
+  crew_top: { job: string; name: string }[];
+  trailer_key: string | null;
+  trailer_name: string | null;
+  similar: SimilarTitle[];
 }
 
 interface CatalogEntry {
@@ -367,4 +409,193 @@ export function directorFromDetail(detail: TmdbDetail): string | null {
 export function genresFromDetail(detail: TmdbDetail): string | null {
   if (!detail.genres || detail.genres.length === 0) return null;
   return detail.genres.map((g) => g.name).join(', ');
+}
+
+// --- Extended detail (cast, trailer, similar) ---
+
+interface RawCastMember {
+  id: number;
+  name: string;
+  character: string;
+  profile_path: string | null;
+}
+
+interface RawVideo {
+  key: string;
+  name: string;
+  site: string;
+  type: string;
+  official: boolean;
+}
+
+interface RawSimilar {
+  results: {
+    id: number;
+    media_type?: string;
+    title?: string;
+    name?: string;
+    original_title?: string;
+    original_name?: string;
+    release_date?: string;
+    first_air_date?: string;
+    poster_path: string | null;
+    vote_average: number;
+    overview: string;
+  }[];
+}
+
+interface RawExtendedMovie extends RawMovieDetail {
+  credits?: { cast: RawCastMember[]; crew: { job: string; name: string }[] };
+  videos?: { results: RawVideo[] };
+  similar?: RawSimilar;
+}
+
+interface RawExtendedTv extends RawTvDetail {
+  credits?: { cast: RawCastMember[]; crew: { job: string; name: string }[] };
+  videos?: { results: RawVideo[] };
+  similar?: RawSimilar;
+}
+
+function castFromRaw(raw: RawCastMember[] | undefined, limit = 12): CastMember[] {
+  if (!raw) return [];
+  return raw.slice(0, limit).map((c) => ({
+    id: c.id,
+    name: c.name,
+    character: c.character,
+    profile_path: c.profile_path,
+    profile_url: profileUrl(c.profile_path),
+  }));
+}
+
+function firstTrailerKey(videos: RawVideo[] | undefined): { key: string; name: string } | null {
+  if (!videos?.length) return null;
+  // Prefer official YouTube trailers, then any YouTube trailer, then any YouTube clip.
+  const yt = videos.filter((v) => v.site === 'YouTube');
+  const officialTrailer = yt.find((v) => v.type === 'Trailer' && v.official);
+  if (officialTrailer) return { key: officialTrailer.key, name: officialTrailer.name };
+  const anyTrailer = yt.find((v) => v.type === 'Trailer');
+  if (anyTrailer) return { key: anyTrailer.key, name: anyTrailer.name };
+  const first = yt[0];
+  if (first) return { key: first.key, name: first.name };
+  return null;
+}
+
+function similarFromRaw(raw: RawSimilar | undefined, fallbackMedia: MediaType, limit = 8): SimilarTitle[] {
+  if (!raw?.results) return [];
+  const out: SimilarTitle[] = [];
+  for (const r of raw.results) {
+    if (!r.id) continue;
+    const mediaType: MediaType | null =
+      r.media_type === 'movie' || r.media_type === 'tv' ? r.media_type : fallbackMedia;
+    if (!mediaType) continue;
+    const title = r.title || r.name || '';
+    if (!title) continue;
+    const date = r.release_date || r.first_air_date || '';
+    out.push({
+      tmdb_id: r.id,
+      media_type: mediaType,
+      title_de: title,
+      year: date ? date.slice(0, 4) : '',
+      poster_path: r.poster_path,
+      poster_url: posterUrl(r.poster_path),
+      vote_average: r.vote_average,
+      overview_de: r.overview,
+    });
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+export async function getTitleExtended(
+  tmdb_id: number,
+  media_type: MediaType,
+): Promise<TitleExtended | null> {
+  // Fallback path: the demo catalog has no cast/trailer/similar data — return
+  // the basic detail with empty arrays. The UI conditionally renders these
+  // sections, so it just hides them.
+  if (!TMDB_API_KEY) {
+    const detail = fallbackDetail(tmdb_id, media_type);
+    if (!detail) return null;
+    return {
+      detail,
+      cast: [],
+      crew_top: detail.credits?.crew ?? [],
+      trailer_key: null,
+      trailer_name: null,
+      similar: [],
+    };
+  }
+
+  const path = `/${media_type}/${tmdb_id}?language=de-DE&append_to_response=credits,videos,similar,external_ids`;
+
+  if (media_type === 'movie') {
+    const d = await tmdbGet<RawExtendedMovie>(path);
+    if (!d || !d.id) return null;
+    const detail: TmdbDetail = {
+      id: d.id,
+      media_type: 'movie',
+      title: d.title || d.original_title,
+      original_title: d.original_title,
+      release_date: d.release_date,
+      poster_path: d.poster_path,
+      backdrop_path: d.backdrop_path,
+      overview: d.overview,
+      tagline: d.tagline,
+      runtime: d.runtime,
+      genres: d.genres,
+      vote_average: d.vote_average,
+      imdb_id: d.imdb_id,
+      number_of_seasons: null,
+      number_of_episodes: null,
+      credits: d.credits ? { crew: d.credits.crew } : undefined,
+    };
+    const trailer = firstTrailerKey(d.videos?.results);
+    return {
+      detail,
+      cast: castFromRaw(d.credits?.cast),
+      crew_top: (d.credits?.crew ?? []).slice(0, 8),
+      trailer_key: trailer?.key ?? null,
+      trailer_name: trailer?.name ?? null,
+      similar: similarFromRaw(d.similar, 'movie'),
+    };
+  }
+
+  const d = await tmdbGet<RawExtendedTv>(path);
+  if (!d || !d.id) return null;
+  const imdbId = d.external_ids?.imdb_id ?? null;
+  const runtime = d.episode_run_time?.length ? d.episode_run_time[0] : null;
+  const creatorNames = d.created_by?.map((c) => c.name) ?? [];
+  const crew = d.credits?.crew ?? [];
+  const mergedCrew = [
+    ...creatorNames.map((name) => ({ job: 'Creator', name })),
+    ...crew.filter((c) => c.job === 'Director' || c.job === 'Creator'),
+  ];
+  const detail: TmdbDetail = {
+    id: d.id,
+    media_type: 'tv',
+    title: d.name || d.original_name,
+    original_title: d.original_name,
+    release_date: d.first_air_date,
+    poster_path: d.poster_path,
+    backdrop_path: d.backdrop_path,
+    overview: d.overview,
+    tagline: d.tagline ?? '',
+    runtime,
+    genres: d.genres,
+    vote_average: d.vote_average,
+    imdb_id: imdbId,
+    number_of_seasons: d.number_of_seasons,
+    number_of_episodes: d.number_of_episodes,
+    credits: { crew: mergedCrew },
+    created_by: d.created_by,
+  };
+  const trailer = firstTrailerKey(d.videos?.results);
+  return {
+    detail,
+    cast: castFromRaw(d.credits?.cast),
+    crew_top: mergedCrew.slice(0, 8),
+    trailer_key: trailer?.key ?? null,
+    trailer_name: trailer?.name ?? null,
+    similar: similarFromRaw(d.similar, 'tv'),
+  };
 }

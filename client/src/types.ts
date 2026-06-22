@@ -70,3 +70,58 @@ export interface Me {
   email: string | null;
   name: string | null;
 }
+
+export interface CastMember {
+  id: number;
+  name: string;
+  character: string;
+  profile_path: string | null;
+  profile_url: string | null;
+}
+
+export interface SimilarTitle {
+  tmdb_id: number;
+  media_type: MediaType;
+  title_de: string;
+  year: string;
+  poster_path: string | null;
+  poster_url: string | null;
+  vote_average: number;
+  overview_de: string;
+}
+
+export interface TitleDetailData {
+  tmdb_id: number;
+  media_type: MediaType;
+  title: string;
+  original_title: string | null;
+  year: string | null;
+  poster_url: string | null;
+  backdrop_url: string | null;
+  genre: string | null;
+  director: string | null;
+  plot: string | null;
+  tagline: string | null;
+  runtime: number | null;
+  tmdb_rating: number;
+  imdb_id: string | null;
+  number_of_seasons: number | null;
+  number_of_episodes: number | null;
+}
+
+export interface WatchlistEntrySummary {
+  id: number;
+  status: WatchStatus;
+  rating: number | null;
+  notes: string | null;
+}
+
+export interface TitleFull {
+  title: TitleDetailData;
+  cast: CastMember[];
+  crew_top: { job: string; name: string }[];
+  trailer_key: string | null;
+  trailer_name: string | null;
+  similar: SimilarTitle[];
+  watchlist: WatchlistEntrySummary | null;
+}

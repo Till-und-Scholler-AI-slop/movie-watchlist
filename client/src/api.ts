@@ -6,6 +6,7 @@ import type {
   MediaType,
   WatchlistUpdate,
   Me,
+  TitleFull,
 } from './types.js';
 
 const API = '/api';
@@ -78,5 +79,9 @@ export const api = {
 
   me(): Promise<Me> {
     return http<Me>(`${API}/me`);
+  },
+
+  getTitleFull(tmdb_id: number, media_type: MediaType): Promise<TitleFull> {
+    return http<TitleFull>(`${API}/titles/${tmdb_id}/full?type=${media_type}`);
   },
 };

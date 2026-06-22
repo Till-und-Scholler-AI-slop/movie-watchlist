@@ -240,6 +240,10 @@ export function getById(userId: string, id: number): WatchlistRow | null {
   return coerceRow(getByIdStmt.get(id, userId));
 }
 
+export function getByTmdbId(userId: string, tmdbId: number, mediaType: MediaType): WatchlistRow | null {
+  return coerceRow(getByTmdbStmt.get(userId, tmdbId, mediaType));
+}
+
 export function list(
   userId: string,
   status?: WatchStatus,

@@ -3,12 +3,17 @@ import type { SearchTitle, WatchlistItem, WatchStatus, MediaType, Stats, Me } fr
 import { api } from './api.js';
 import { SearchResultCard } from './components/SearchResultCard.js';
 import { WatchlistCard } from './components/WatchlistCard.js';
-import { EditModal } from './components/EditModal.js';
+import { TitleDetailOverlay } from './components/TitleDetailOverlay.js';
 import { StatsBar } from './components/StatsBar.js';
 import { STATUS_LIST, STATUS_LABELS } from './components/StatusBadge.js';
 
 type View = 'search' | 'watchlist' | 'stats';
 type MediaFilter = 'all' | MediaType;
+
+interface StackItem {
+  tmdb_id: number;
+  media_type: MediaType;
+}
 
 export function App() {
   const [view, setView] = useState<View>('search');
@@ -32,8 +37,8 @@ export function App() {
   // Stats
   const [stats, setStats] = useState<Stats | null>(null);
 
-  // Modal
-  const [editing, setEditing] = useState<WatchlistItem | null>(null);
+  // Detail overlay
+  const [detailStack, setDetailStack] = useState<StackItem[]>([]);
 
   // Current user (for the badge + logout link)
   const [me, setMe] = useState<Me | null>(null);
@@ -124,9 +129,28 @@ export function App() {
     }
   }
 
-  function handleSaved(updated: WatchlistItem) {
-    setItems((prev) => prev.map((i) => (i.id === updated.id ? updated : i)));
-    void refreshStats();
+  function openDetail(item: WatchlistItem) {
+    setDetailStack([{ tmdb_id: item.tmdb_id, media_type: item.media_type }]);
+  }
+
+  function openDetailFromSearch(title: SearchTitle) {
+    setDetailStack([{ tmdb_id: title.tmdb_id, media_type: title.media_type }]);
+  }
+
+  function pushDetail(item: StackItem) {
+    setDetailStack((prev) => [...prev, item]);
+  }
+
+  function popDetail() {
+    setDetailStack((prev) => prev.slice(0, -1));
+  }
+
+  function closeDetail() {
+    setDetailStack([]);
+  }
+
+  async function handleOverlayChanged() {
+    await Promise.all([refreshWatchlist(), refreshStats()]);
   }
 
   const totalPages = Math.ceil(searchTotal / 10);
@@ -232,6 +256,7 @@ export function App() {
                       disabled={watchlistKeys.has(`${t.tmdb_id}-${t.media_type}`)}
                       disabledReason="Bereits in deiner Watchlist"
                       onAdded={handleAdded}
+                      onOpen={openDetailFromSearch}
                     />
                   ))}
                 </div>
@@ -367,7 +392,7 @@ export function App() {
                   <WatchlistCard
                     key={item.id}
                     item={item}
-                    onEdit={(i) => setEditing(i)}
+                    onOpen={openDetail}
                     onRemove={handleRemove}
                   />
                 ))}
@@ -391,8 +416,14 @@ export function App() {
         )}
       </main>
 
-      {editing && (
-        <EditModal item={editing} onClose={() => setEditing(null)} onSaved={handleSaved} />
+      {detailStack.length > 0 && (
+        <TitleDetailOverlay
+          stack={detailStack}
+          onClose={closeDetail}
+          onChanged={handleOverlayChanged}
+          onPop={popDetail}
+          onPush={pushDetail}
+        />
       )}
 
       <footer className="mx-auto max-w-6xl px-4 py-8 text-center text-xs text-slate-600">

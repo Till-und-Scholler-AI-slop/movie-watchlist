@@ -9,9 +9,10 @@ interface Props {
   disabled?: boolean;
   disabledReason?: string;
   onAdded: () => void;
+  onOpen: (title: SearchTitle) => void;
 }
 
-export function SearchResultCard({ title, disabled, disabledReason, onAdded }: Props) {
+export function SearchResultCard({ title, disabled, disabledReason, onAdded, onOpen }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
@@ -36,7 +37,10 @@ export function SearchResultCard({ title, disabled, disabledReason, onAdded }: P
     title.title_original.length > 0;
 
   return (
-    <div className="group flex flex-col overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]">
+    <div
+      onClick={() => onOpen(title)}
+      className="group flex cursor-pointer flex-col overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] transition-colors hover:border-amber-500/40"
+    >
       <div className="relative aspect-[2/3] w-full overflow-hidden">
         <Poster src={title.poster_url} alt={title.title_de} className="h-full w-full" />
         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
@@ -64,13 +68,16 @@ export function SearchResultCard({ title, disabled, disabledReason, onAdded }: P
         </div>
 
         {done ? (
-          <span className="mt-auto inline-flex items-center justify-center rounded-md bg-emerald-500/15 px-2 py-1.5 text-xs font-medium text-emerald-300">
+          <span
+            onClick={(e) => e.stopPropagation()}
+            className="mt-auto inline-flex items-center justify-center rounded-md bg-emerald-500/15 px-2 py-1.5 text-xs font-medium text-emerald-300"
+          >
             Added to watchlist
           </span>
         ) : (
           <button
             type="button"
-            onClick={add}
+            onClick={(e) => { e.stopPropagation(); void add(); }}
             disabled={busy || disabled}
             title={disabled ? disabledReason : undefined}
             className="mt-auto inline-flex items-center justify-center rounded-md bg-[var(--color-accent)] px-2 py-1.5 text-xs font-semibold text-black transition-colors hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-40"

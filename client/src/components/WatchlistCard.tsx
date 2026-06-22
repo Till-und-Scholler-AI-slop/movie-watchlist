@@ -7,7 +7,7 @@ import { MediaTypeBadge } from './MediaTypeBadge.js';
 
 interface Props {
   item: WatchlistItem;
-  onEdit: (item: WatchlistItem) => void;
+  onOpen: (item: WatchlistItem) => void;
   onRemove: (item: WatchlistItem) => void;
 }
 
@@ -30,7 +30,7 @@ function formatShowInfo(item: WatchlistItem): string | null {
   return parts.join(' · ');
 }
 
-export function WatchlistCard({ item, onEdit, onRemove }: Props) {
+export function WatchlistCard({ item, onOpen, onRemove }: Props) {
   const poster = posterUrlFromPath(item.poster_path);
   const showOriginal =
     item.original_title &&
@@ -40,7 +40,10 @@ export function WatchlistCard({ item, onEdit, onRemove }: Props) {
   const meta = item.media_type === 'tv' ? formatShowInfo(item) : formatRuntime(item.runtime);
 
   return (
-    <div className="flex gap-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3 transition-colors hover:border-amber-500/40">
+    <div
+      onClick={() => onOpen(item)}
+      className="flex cursor-pointer gap-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3 transition-colors hover:border-amber-500/40"
+    >
       <div className="h-36 w-24 shrink-0 overflow-hidden rounded-md">
         <Poster src={poster} alt={item.title} className="h-full w-full" />
       </div>
@@ -84,22 +87,13 @@ export function WatchlistCard({ item, onEdit, onRemove }: Props) {
 
         <div className="mt-auto flex items-center justify-between gap-2 pt-1">
           <Stars value={item.rating} size="sm" />
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => onEdit(item)}
-              className="rounded-md border border-[var(--color-border)] px-2.5 py-1 text-xs font-medium text-slate-200 hover:bg-[var(--color-surface-2)]"
-            >
-              Edit
-            </button>
-            <button
-              type="button"
-              onClick={() => onRemove(item)}
-              className="rounded-md px-2.5 py-1 text-xs font-medium text-rose-400 hover:bg-rose-500/10"
-            >
-              Remove
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onRemove(item); }}
+            className="rounded-md px-2.5 py-1 text-xs font-medium text-rose-400 hover:bg-rose-500/10"
+          >
+            Remove
+          </button>
         </div>
       </div>
     </div>
