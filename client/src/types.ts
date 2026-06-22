@@ -63,3 +63,10 @@ export interface WatchlistUpdate {
   rating?: number | null;
   notes?: string | null;
 }
+
+export interface Me {
+  uid: string;
+  username: string | null;
+  email: string | null;
+  name: string | null;
+}

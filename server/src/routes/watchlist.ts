@@ -14,7 +14,7 @@ watchlistRouter.get('/', (req, res) => {
   const mediaFilter =
     mediaTypeParam && validMediaTypes.includes(mediaTypeParam) ? mediaTypeParam : undefined;
 
-  res.json({ items: list(statusFilter, mediaFilter) });
+  res.json({ items: list(req.user!.uid, statusFilter, mediaFilter) });
 });
 
 watchlistRouter.post('/', async (req, res) => {
@@ -29,7 +29,7 @@ watchlistRouter.post('/', async (req, res) => {
   const detail: TmdbDetail | null = await getTitleDetail(tmdb_id, media_type);
   if (!detail) return res.status(404).json({ error: 'Title not found on TMDB' });
 
-  const result = addTitle({
+  const result = addTitle(req.user!.uid, {
     tmdb_id: detail.id,
     media_type: detail.media_type,
     title: detail.title || detail.original_title,
@@ -59,7 +59,7 @@ watchlistRouter.patch('/:id', (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (Number.isNaN(id)) return res.status(400).json({ error: 'Invalid id' });
 
-  const existing = getById(id);
+  const existing = getById(req.user!.uid, id);
   if (!existing) return res.status(404).json({ error: 'Entry not found' });
 
   const validStatuses: WatchStatus[] = ['want', 'watching', 'watched'];
@@ -76,15 +76,15 @@ watchlistRouter.patch('/:id', (req, res) => {
 
   const notes = req.body?.notes === undefined ? existing.notes : String(req.body.notes);
 
-  const ok = updateEntry({ id, status, rating, notes });
+  const ok = updateEntry({ user_id: req.user!.uid, id, status, rating, notes });
   if (!ok) return res.status(404).json({ error: 'Entry not found' });
-  res.json({ item: getById(id) });
+  res.json({ item: getById(req.user!.uid, id) });
 });
 
 watchlistRouter.delete('/:id', (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (Number.isNaN(id)) return res.status(400).json({ error: 'Invalid id' });
-  const ok = removeEntry(id);
+  const ok = removeEntry(req.user!.uid, id);
   if (!ok) return res.status(404).json({ error: 'Entry not found' });
   res.status(204).end();
 });

@@ -15,8 +15,16 @@ db.exec('PRAGMA foreign_keys = ON');
 export type WatchStatus = 'want' | 'watching' | 'watched';
 export type MediaType = 'movie' | 'tv';
 
+export interface User {
+  uid: string;
+  username: string | null;
+  email: string | null;
+  name: string | null;
+}
+
 export interface WatchlistRow {
   id: number;
+  user_id: string;
   tmdb_id: number;
   media_type: MediaType;
   title: string;
@@ -40,49 +48,131 @@ export interface WatchlistRow {
   watched_at: string | null;
 }
 
-// Auto-migrate: drop legacy single-key schema if it exists (no production data yet).
-function migrate(): void {
-  const cols = db.prepare("PRAGMA table_info(watchlist)").all() as { name: string }[];
-  if (cols.length === 0) return;
-  const colNames = cols.map((c) => c.name);
-  const hasMediaType = colNames.includes('media_type');
-  if (hasMediaType) return;
-  // Old schema without media_type — drop and recreate.
-  db.exec('DROP TABLE IF EXISTS watchlist');
-}
-
-migrate();
+// --- Schema migration (idempotent) ---
 
 db.exec(`
-  CREATE TABLE IF NOT EXISTS watchlist (
-    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
-    tmdb_id             INTEGER NOT NULL,
-    media_type          TEXT NOT NULL CHECK (media_type IN ('movie','tv')),
-    title               TEXT NOT NULL,
-    original_title      TEXT,
-    year                TEXT,
-    poster_path         TEXT,
-    backdrop_path       TEXT,
-    genre               TEXT,
-    director            TEXT,
-    plot                TEXT,
-    tagline             TEXT,
-    runtime             INTEGER,
-    tmdb_rating         REAL,
-    imdb_id             TEXT,
-    number_of_seasons   INTEGER,
-    number_of_episodes  INTEGER,
-    status              TEXT NOT NULL DEFAULT 'want' CHECK (status IN ('want','watching','watched')),
-    rating              INTEGER CHECK (rating IS NULL OR (rating >= 1 AND rating <= 5)),
-    notes               TEXT,
-    added_at            TEXT NOT NULL DEFAULT (datetime('now')),
-    watched_at          TEXT,
-    UNIQUE (tmdb_id, media_type)
-  );
-  CREATE INDEX IF NOT EXISTS idx_watchlist_status ON watchlist(status);
-  CREATE INDEX IF NOT EXISTS idx_watchlist_media ON watchlist(media_type);
-  CREATE INDEX IF NOT EXISTS idx_watchlist_added ON watchlist(added_at);
+  CREATE TABLE IF NOT EXISTS users (
+    uid         TEXT PRIMARY KEY,
+    username    TEXT,
+    email       TEXT,
+    name        TEXT,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+  )
 `);
+
+const wlCols = db.prepare("PRAGMA table_info(watchlist)").all() as { name: string }[];
+
+if (wlCols.length > 0 && !wlCols.some((c) => c.name === 'media_type')) {
+  // Ancient pre-media_type schema — drop and recreate (no production data survives this).
+  db.exec('DROP TABLE watchlist');
+  wlCols.length = 0;
+}
+
+if (wlCols.length === 0) {
+  // Fresh install — create new schema with user_id.
+  createWatchlistTable();
+} else if (!wlCols.some((c) => c.name === 'user_id')) {
+  // Legacy table without user_id — recreate with user_id, backfilling
+  // existing rows to MIGRATE_LEGACY_OWNER_UID (or 'dev' in dev mode).
+  const legacyUid = process.env.MIGRATE_LEGACY_OWNER_UID ?? 'dev';
+  const srcCols = wlCols.map((c) => c.name).filter((n) => n !== 'user_id');
+  db.exec('BEGIN');
+  try {
+    db.exec(`
+      CREATE TABLE watchlist_new (
+        id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id             TEXT NOT NULL REFERENCES users(uid),
+        tmdb_id             INTEGER NOT NULL,
+        media_type          TEXT NOT NULL CHECK (media_type IN ('movie','tv')),
+        title               TEXT NOT NULL,
+        original_title      TEXT,
+        year                TEXT,
+        poster_path         TEXT,
+        backdrop_path       TEXT,
+        genre               TEXT,
+        director            TEXT,
+        plot                TEXT,
+        tagline             TEXT,
+        runtime             INTEGER,
+        tmdb_rating         REAL,
+        imdb_id             TEXT,
+        number_of_seasons   INTEGER,
+        number_of_episodes  INTEGER,
+        status              TEXT NOT NULL DEFAULT 'want' CHECK (status IN ('want','watching','watched')),
+        rating              INTEGER CHECK (rating IS NULL OR (rating >= 1 AND rating <= 5)),
+        notes               TEXT,
+        added_at            TEXT NOT NULL DEFAULT (datetime('now')),
+        watched_at          TEXT,
+        UNIQUE (user_id, tmdb_id, media_type)
+      )
+    `);
+    // Ensure the legacy owner row exists so the FK is satisfied.
+    db.prepare('INSERT OR IGNORE INTO users (uid, username) VALUES (?, ?)').run(legacyUid, 'legacy-owner');
+    // Copy only columns that exist in the source table (robust across schema versions).
+    const colList = srcCols.join(', ');
+    db.exec(`INSERT INTO watchlist_new (id, user_id, ${colList}) SELECT id, '${legacyUid}', ${colList} FROM watchlist`);
+    db.exec('DROP TABLE watchlist');
+    db.exec('ALTER TABLE watchlist_new RENAME TO watchlist');
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
+  console.log(`[db] migrated legacy watchlist rows to owner uid=${legacyUid}`);
+}
+
+function createWatchlistTable(): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS watchlist (
+      id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id             TEXT NOT NULL REFERENCES users(uid),
+      tmdb_id             INTEGER NOT NULL,
+      media_type          TEXT NOT NULL CHECK (media_type IN ('movie','tv')),
+      title               TEXT NOT NULL,
+      original_title      TEXT,
+      year                TEXT,
+      poster_path         TEXT,
+      backdrop_path       TEXT,
+      genre               TEXT,
+      director            TEXT,
+      plot                TEXT,
+      tagline             TEXT,
+      runtime             INTEGER,
+      tmdb_rating         REAL,
+      imdb_id             TEXT,
+      number_of_seasons   INTEGER,
+      number_of_episodes  INTEGER,
+      status              TEXT NOT NULL DEFAULT 'want' CHECK (status IN ('want','watching','watched')),
+      rating              INTEGER CHECK (rating IS NULL OR (rating >= 1 AND rating <= 5)),
+      notes               TEXT,
+      added_at            TEXT NOT NULL DEFAULT (datetime('now')),
+      watched_at          TEXT,
+      UNIQUE (user_id, tmdb_id, media_type)
+    )
+  `);
+}
+
+createWatchlistTable();
+db.exec('CREATE INDEX IF NOT EXISTS idx_watchlist_user ON watchlist(user_id)');
+db.exec('CREATE INDEX IF NOT EXISTS idx_watchlist_status ON watchlist(status)');
+db.exec('CREATE INDEX IF NOT EXISTS idx_watchlist_media ON watchlist(media_type)');
+db.exec('CREATE INDEX IF NOT EXISTS idx_watchlist_added ON watchlist(added_at)');
+
+// --- Users ---
+
+const upsertUserStmt = db.prepare(`
+  INSERT INTO users (uid, username, email, name) VALUES (@uid, @username, @email, @name)
+  ON CONFLICT(uid) DO UPDATE SET
+    username = excluded.username,
+    email    = excluded.email,
+    name     = excluded.name
+`);
+
+export function upsertUser(u: User): void {
+  upsertUserStmt.run(u as unknown as Record<string, SQLInputValue>);
+}
+
+// --- Watchlist ---
 
 export interface AddTitleInput {
   tmdb_id: number;
@@ -105,57 +195,58 @@ export interface AddTitleInput {
 
 const insertStmt = db.prepare(`
   INSERT INTO watchlist (
-    tmdb_id, media_type, title, original_title, year, poster_path, backdrop_path,
+    user_id, tmdb_id, media_type, title, original_title, year, poster_path, backdrop_path,
     genre, director, plot, tagline, runtime, tmdb_rating, imdb_id,
     number_of_seasons, number_of_episodes
   )
   VALUES (
-    @tmdb_id, @media_type, @title, @original_title, @year, @poster_path, @backdrop_path,
+    @user_id, @tmdb_id, @media_type, @title, @original_title, @year, @poster_path, @backdrop_path,
     @genre, @director, @plot, @tagline, @runtime, @tmdb_rating, @imdb_id,
     @number_of_seasons, @number_of_episodes
   )
-  ON CONFLICT(tmdb_id, media_type) DO NOTHING
+  ON CONFLICT(user_id, tmdb_id, media_type) DO NOTHING
   RETURNING id
 `);
 
-const getByIdStmt = db.prepare('SELECT * FROM watchlist WHERE id = ?');
-const getByTmdbStmt = db.prepare('SELECT * FROM watchlist WHERE tmdb_id = ? AND media_type = ?');
-const listStmt = db.prepare('SELECT * FROM watchlist ORDER BY added_at DESC');
-const listByStatusStmt = db.prepare('SELECT * FROM watchlist WHERE status = ? ORDER BY added_at DESC');
-const listByMediaTypeStmt = db.prepare('SELECT * FROM watchlist WHERE media_type = ? ORDER BY added_at DESC');
+const getByIdStmt = db.prepare('SELECT * FROM watchlist WHERE id = ? AND user_id = ?');
+const getByTmdbStmt = db.prepare('SELECT * FROM watchlist WHERE user_id = ? AND tmdb_id = ? AND media_type = ?');
+const listStmt = db.prepare('SELECT * FROM watchlist WHERE user_id = ? ORDER BY added_at DESC');
+const listByStatusStmt = db.prepare('SELECT * FROM watchlist WHERE user_id = ? AND status = ? ORDER BY added_at DESC');
+const listByMediaTypeStmt = db.prepare('SELECT * FROM watchlist WHERE user_id = ? AND media_type = ? ORDER BY added_at DESC');
 const listByStatusAndMediaTypeStmt = db.prepare(
-  'SELECT * FROM watchlist WHERE status = ? AND media_type = ? ORDER BY added_at DESC',
+  'SELECT * FROM watchlist WHERE user_id = ? AND status = ? AND media_type = ? ORDER BY added_at DESC',
 );
 
 function coerceRow(row: unknown): WatchlistRow | null {
   return (row ?? null) as WatchlistRow | null;
 }
 
-export function addTitle(input: AddTitleInput): { item: WatchlistRow | null; created: boolean } {
+export function addTitle(userId: string, input: AddTitleInput): { item: WatchlistRow | null; created: boolean } {
   const row = insertStmt.get(
-    input as unknown as Record<string, SQLInputValue>,
+    { ...input, user_id: userId } as unknown as Record<string, SQLInputValue>,
   ) as unknown as { id: number } | undefined;
-  if (row) return { item: coerceRow(getByIdStmt.get(row.id)), created: true };
+  if (row) return { item: coerceRow(getByIdStmt.get(row.id, userId)), created: true };
   return {
-    item: coerceRow(getByTmdbStmt.get(input.tmdb_id, input.media_type)),
+    item: coerceRow(getByTmdbStmt.get(userId, input.tmdb_id, input.media_type)),
     created: false,
   };
 }
 
-export function getById(id: number): WatchlistRow | null {
-  return coerceRow(getByIdStmt.get(id));
+export function getById(userId: string, id: number): WatchlistRow | null {
+  return coerceRow(getByIdStmt.get(id, userId));
 }
 
 export function list(
+  userId: string,
   status?: WatchStatus,
   mediaType?: MediaType,
 ): WatchlistRow[] {
   if (status && mediaType) {
-    return listByStatusAndMediaTypeStmt.all(status, mediaType) as unknown as WatchlistRow[];
+    return listByStatusAndMediaTypeStmt.all(userId, status, mediaType) as unknown as WatchlistRow[];
   }
-  if (status) return listByStatusStmt.all(status) as unknown as WatchlistRow[];
-  if (mediaType) return listByMediaTypeStmt.all(mediaType) as unknown as WatchlistRow[];
-  return listStmt.all() as unknown as WatchlistRow[];
+  if (status) return listByStatusStmt.all(userId, status) as unknown as WatchlistRow[];
+  if (mediaType) return listByMediaTypeStmt.all(userId, mediaType) as unknown as WatchlistRow[];
+  return listStmt.all(userId) as unknown as WatchlistRow[];
 }
 
 const updateStmt = db.prepare(`
@@ -164,10 +255,11 @@ const updateStmt = db.prepare(`
       rating = @rating,
       notes = @notes,
       watched_at = @watched_at
-  WHERE id = @id
+  WHERE id = @id AND user_id = @user_id
 `);
 
 export interface UpdateInput {
+  user_id: string;
   id: number;
   status: WatchStatus;
   rating: number | null;
@@ -180,10 +272,10 @@ export function updateEntry(input: UpdateInput): boolean {
   return res.changes > 0;
 }
 
-const deleteStmt = db.prepare('DELETE FROM watchlist WHERE id = ?');
+const deleteStmt = db.prepare('DELETE FROM watchlist WHERE id = ? AND user_id = ?');
 
-export function removeEntry(id: number): boolean {
-  return deleteStmt.run(id).changes > 0;
+export function removeEntry(userId: string, id: number): boolean {
+  return deleteStmt.run(id, userId).changes > 0;
 }
 
 const statsStmt = db.prepare(`
@@ -196,6 +288,7 @@ const statsStmt = db.prepare(`
     COALESCE(SUM(CASE WHEN media_type = 'movie' THEN 1 ELSE 0 END), 0) AS movies,
     COALESCE(SUM(CASE WHEN media_type = 'tv' THEN 1 ELSE 0 END), 0) AS shows
   FROM watchlist
+  WHERE user_id = ?
 `);
 
 export interface Stats {
@@ -208,14 +301,14 @@ export interface Stats {
   shows: number;
 }
 
-export function stats(): Stats {
-  return statsStmt.get() as unknown as Stats;
+export function stats(userId: string): Stats {
+  return statsStmt.get(userId) as unknown as Stats;
 }
 
 const genreStatsStmt = db.prepare(`
   SELECT genre AS name, COUNT(*) AS count
   FROM watchlist
-  WHERE genre IS NOT NULL AND genre != '' AND status = 'watched'
+  WHERE user_id = ? AND genre IS NOT NULL AND genre != '' AND status = 'watched'
   GROUP BY genre
   ORDER BY count DESC
   LIMIT 10
@@ -226,8 +319,8 @@ export interface GenreStat {
   count: number;
 }
 
-export function genreStats(): GenreStat[] {
-  const rows = genreStatsStmt.all() as unknown as { name: string; count: number }[];
+export function genreStats(userId: string): GenreStat[] {
+  const rows = genreStatsStmt.all(userId) as unknown as { name: string; count: number }[];
   const out: GenreStat[] = [];
   for (const r of rows) {
     for (const g of r.name.split(', ')) {

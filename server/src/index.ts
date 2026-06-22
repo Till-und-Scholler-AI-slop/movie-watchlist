@@ -8,6 +8,7 @@ import 'dotenv/config';
 import { searchRouter } from './routes/search.js';
 import { watchlistRouter } from './routes/watchlist.js';
 import { statsRouter } from './routes/stats.js';
+import { authMiddleware } from './auth.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = parseInt(process.env.PORT ?? '8787', 10);
@@ -18,6 +19,11 @@ app.use(cors());
 app.use(express.json());
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
+
+// Auth: gates everything except /api/health. In dev mode (no TRUST_AUTHENTIK_HEADERS),
+// a fixed local user is used. Behind Authentik+nginx, X-authentik-* headers are trusted.
+app.use('/api', authMiddleware);
+app.get('/api/me', (req, res) => res.json(req.user));
 
 app.use('/api/search', searchRouter);
 app.use('/api/watchlist', watchlistRouter);
