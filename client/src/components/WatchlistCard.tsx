@@ -1,14 +1,17 @@
-import type { WatchlistItem } from '../types.js';
-import { posterUrlFromPath } from '../api.js';
+import { useState } from 'react';
+import type { WatchlistItem, WatchStatus } from '../types.js';
+import { api, posterUrlFromPath } from '../api.js';
 import { Poster } from './Poster.js';
 import { Stars } from './Stars.js';
 import { StatusBadge } from './StatusBadge.js';
 import { MediaTypeBadge } from './MediaTypeBadge.js';
+import { STATUS_LIST, STATUS_SHORT } from './StatusBadge.js';
 
 interface Props {
   item: WatchlistItem;
   onOpen: (item: WatchlistItem) => void;
   onRemove: (item: WatchlistItem) => void;
+  onUpdated: () => void;
 }
 
 function formatRuntime(min: number | null): string | null {
@@ -30,7 +33,13 @@ function formatShowInfo(item: WatchlistItem): string | null {
   return parts.join(' · ');
 }
 
-export function WatchlistCard({ item, onOpen, onRemove }: Props) {
+const QUICK_STYLES: Record<WatchStatus, string> = {
+  want: 'border-sky-500/40 bg-sky-500/10 text-sky-300',
+  watching: 'border-amber-500/40 bg-amber-500/10 text-amber-300',
+  watched: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300',
+};
+
+export function WatchlistCard({ item, onOpen, onRemove, onUpdated }: Props) {
   const poster = posterUrlFromPath(item.poster_path);
   const showOriginal =
     item.original_title &&
@@ -38,6 +47,25 @@ export function WatchlistCard({ item, onOpen, onRemove }: Props) {
     item.original_title.length > 0;
 
   const meta = item.media_type === 'tv' ? formatShowInfo(item) : formatRuntime(item.runtime);
+
+  const [status, setStatus] = useState<WatchStatus>(item.status);
+  const [pending, setPending] = useState(false);
+
+  async function quickStatus(next: WatchStatus) {
+    if (next === status || pending) return;
+    const prev = status;
+    setStatus(next);
+    setPending(true);
+    try {
+      await api.updateItem(item.id, { status: next });
+      onUpdated();
+    } catch (e) {
+      setStatus(prev);
+      alert(e instanceof Error ? e.message : 'Speichern fehlgeschlagen');
+    } finally {
+      setPending(false);
+    }
+  }
 
   return (
     <div
@@ -63,7 +91,7 @@ export function WatchlistCard({ item, onOpen, onRemove }: Props) {
               </p>
             )}
           </div>
-          <StatusBadge status={item.status} />
+          <StatusBadge status={status} />
         </div>
 
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-400">
@@ -85,6 +113,29 @@ export function WatchlistCard({ item, onOpen, onRemove }: Props) {
           <p className="line-clamp-2 text-xs leading-relaxed text-slate-400">{item.plot}</p>
         )}
 
+        {/* Quick status switch */}
+        <div
+          className="flex flex-wrap gap-1"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {STATUS_LIST.map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => void quickStatus(s)}
+              disabled={pending}
+              title={`Status: ${STATUS_SHORT[s]}`}
+              className={`rounded-md border px-2 py-0.5 text-[11px] font-medium transition-colors disabled:opacity-50 ${
+                status === s
+                  ? QUICK_STYLES[s]
+                  : 'border-[var(--color-border)] text-slate-400 hover:bg-[var(--color-surface-2)]'
+              }`}
+            >
+              {STATUS_SHORT[s]}
+            </button>
+          ))}
+        </div>
+
         <div className="mt-auto flex items-center justify-between gap-2 pt-1">
           <Stars value={item.rating} size="sm" />
           <button
@@ -92,7 +143,7 @@ export function WatchlistCard({ item, onOpen, onRemove }: Props) {
             onClick={(e) => { e.stopPropagation(); onRemove(item); }}
             className="rounded-md px-2.5 py-1 text-xs font-medium text-rose-400 hover:bg-rose-500/10"
           >
-            Remove
+            Entfernen
           </button>
         </div>
       </div>
