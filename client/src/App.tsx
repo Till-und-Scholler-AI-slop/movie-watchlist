@@ -200,7 +200,7 @@ export function App() {
               <span className="hidden sm:inline">Angemeldet als {me.name || me.username || me.uid}</span>
               {me.uid !== 'dev' && (
                 <a
-                  href={`/outpost.goauthentik.io/end?rd=${encodeURIComponent(window.location.origin + '/')}`}
+                  href={`https://auth.sscholler.de/if/flow/default-invalidation-flow/?rd=${encodeURIComponent(window.location.origin + '/')}`}
                   className="rounded-md border border-[var(--color-border)] px-2 py-1 text-slate-300 hover:bg-[var(--color-surface-2)]"
                 >
                   Abmelden
