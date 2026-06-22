@@ -7,6 +7,9 @@ import type {
   WatchlistUpdate,
   Me,
   TitleFull,
+  Follow,
+  FollowedWatchlistItem,
+  SharedWatchlistItem,
 } from './types.js';
 
 const API = '/api';
@@ -83,5 +86,28 @@ export const api = {
 
   getTitleFull(tmdb_id: number, media_type: MediaType): Promise<TitleFull> {
     return http<TitleFull>(`${API}/titles/${tmdb_id}/full?type=${media_type}`);
+  },
+
+  listFollows(): Promise<{ follows: Follow[] }> {
+    return http(`${API}/follows`);
+  },
+
+  follow(query: string): Promise<{ user: Follow }> {
+    return http(`${API}/follows`, {
+      method: 'POST',
+      body: JSON.stringify({ query }),
+    });
+  },
+
+  unfollow(uid: string): Promise<void> {
+    return http(`${API}/follows/${encodeURIComponent(uid)}`, { method: 'DELETE' });
+  },
+
+  getFollowedWatchlist(uid: string): Promise<{ items: FollowedWatchlistItem[] }> {
+    return http(`${API}/follows/${encodeURIComponent(uid)}/watchlist`);
+  },
+
+  getSharedWatchlist(uid: string): Promise<{ items: SharedWatchlistItem[] }> {
+    return http(`${API}/follows/${encodeURIComponent(uid)}/shared`);
   },
 };

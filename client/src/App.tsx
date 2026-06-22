@@ -5,9 +5,10 @@ import { SearchResultCard } from './components/SearchResultCard.js';
 import { WatchlistCard } from './components/WatchlistCard.js';
 import { TitleDetailOverlay } from './components/TitleDetailOverlay.js';
 import { StatsBar } from './components/StatsBar.js';
+import { FollowsTab } from './components/FollowsTab.js';
 import { STATUS_LIST, STATUS_LABELS } from './components/StatusBadge.js';
 
-type View = 'search' | 'watchlist' | 'stats';
+type View = 'search' | 'watchlist' | 'stats' | 'follows';
 type MediaFilter = 'all' | MediaType;
 
 interface StackItem {
@@ -173,7 +174,7 @@ export function App() {
             <h1 className="text-lg font-bold tracking-tight">Movie Watchlist</h1>
           </div>
           <nav className="ml-auto flex gap-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-1">
-            {(['search', 'watchlist', 'stats'] as View[]).map((v) => (
+            {(['search', 'watchlist', 'stats', 'follows'] as View[]).map((v) => (
               <button
                 key={v}
                 type="button"
@@ -188,7 +189,9 @@ export function App() {
                   ? `Watchlist (${items.length})`
                   : v === 'stats'
                     ? 'Stats'
-                    : 'Suche'}
+                    : v === 'follows'
+                      ? 'Freunde'
+                      : 'Suche'}
               </button>
             ))}
           </nav>
@@ -414,6 +417,8 @@ export function App() {
             )}
           </section>
         )}
+
+        {view === 'follows' && <FollowsTab />}
       </main>
 
       {detailStack.length > 0 && (

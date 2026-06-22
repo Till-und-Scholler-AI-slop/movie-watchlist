@@ -9,6 +9,7 @@ import { searchRouter } from './routes/search.js';
 import { watchlistRouter } from './routes/watchlist.js';
 import { statsRouter } from './routes/stats.js';
 import { titlesRouter } from './routes/titles.js';
+import { followsRouter } from './routes/follows.js';
 import { authMiddleware } from './auth.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -30,6 +31,7 @@ app.use('/api/search', searchRouter);
 app.use('/api/watchlist', watchlistRouter);
 app.use('/api/stats', statsRouter);
 app.use('/api/titles', titlesRouter);
+app.use('/api/follows', followsRouter);
 
 // Serve the built client in production. Paths cover both dev workspace
 // layout (../client/dist) and the Docker layout (../public).
