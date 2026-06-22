@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Follow, FollowedWatchlistItem, SharedWatchlistItem, WatchStatus } from '../types.js';
 import { api, posterUrlFromPath } from '../api.js';
 import { Poster } from './Poster.js';
@@ -48,11 +48,13 @@ export function FollowsTab() {
   const [selectedFollow, setSelectedFollow] = useState<Follow | null>(null);
   const [followedItems, setFollowedItems] = useState<FollowedWatchlistItem[]>([]);
   const [followedLoading, setFollowedLoading] = useState(false);
+  const followedReqId = useRef(0);
 
   // Shared watchlist
   const [sharedFriend, setSharedFriend] = useState<Follow | null>(null);
   const [sharedItems, setSharedItems] = useState<SharedWatchlistItem[]>([]);
   const [sharedLoading, setSharedLoading] = useState(false);
+  const sharedReqId = useRef(0);
 
   const refreshFollows = useCallback(async () => {
     setFollowsLoading(true);
@@ -105,30 +107,36 @@ export function FollowsTab() {
   }
 
   async function openFollowedWatchlist(f: Follow) {
+    const myReq = ++followedReqId.current;
     setSelectedFollow(f);
     setFollowedLoading(true);
     setFollowedItems([]);
     try {
       const { items } = await api.getFollowedWatchlist(f.uid);
+      if (myReq !== followedReqId.current) return; // a newer request superseded us
       setFollowedItems(items);
     } catch (e) {
+      if (myReq !== followedReqId.current) return;
       alert(e instanceof Error ? e.message : 'Fehler beim Laden');
     } finally {
-      setFollowedLoading(false);
+      if (myReq === followedReqId.current) setFollowedLoading(false);
     }
   }
 
   async function loadShared(f: Follow) {
+    const myReq = ++sharedReqId.current;
     setSharedFriend(f);
     setSharedLoading(true);
     setSharedItems([]);
     try {
       const { items } = await api.getSharedWatchlist(f.uid);
+      if (myReq !== sharedReqId.current) return; // a newer request superseded us
       setSharedItems(items);
     } catch (e) {
+      if (myReq !== sharedReqId.current) return;
       alert(e instanceof Error ? e.message : 'Fehler beim Laden');
     } finally {
-      setSharedLoading(false);
+      if (myReq === sharedReqId.current) setSharedLoading(false);
     }
   }
 
@@ -164,7 +172,13 @@ export function FollowsTab() {
       <div className="mb-4 flex gap-2">
         <button
           type="button"
-          onClick={() => { setSubView('follows'); setSelectedFollow(null); }}
+          onClick={() => {
+            setSubView('follows');
+            setSelectedFollow(null);
+            followedReqId.current++; // invalidate any in-flight followed-watchlist fetch
+            setFollowedLoading(false);
+            setFollowedItems([]);
+          }}
           className={`rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
             subView === 'follows'
               ? 'border-amber-500 bg-amber-500/15 text-amber-300'

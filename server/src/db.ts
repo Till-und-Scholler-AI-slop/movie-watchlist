@@ -59,6 +59,11 @@ db.exec(`
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
   )
 `);
+db.exec(`
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username_unique
+  ON users (LOWER(username))
+  WHERE username IS NOT NULL
+`);
 
 const wlCols = db.prepare("PRAGMA table_info(watchlist)").all() as { name: string }[];
 
@@ -356,7 +361,6 @@ export function genreStats(userId: string): GenreStat[] {
 export interface FollowRow {
   uid: string;
   username: string | null;
-  email: string | null;
   name: string | null;
   followed_at: string;
 }
@@ -388,18 +392,28 @@ export function isFollowing(followerUid: string, followeeUid: string): boolean {
 }
 
 const listFollowsStmt = db.prepare(`
-  SELECT u.uid, u.username, u.email, u.name, f.created_at AS followed_at
+  SELECT u.uid, u.username, u.name, f.created_at AS followed_at
   FROM follows f JOIN users u ON u.uid = f.followee_id
   WHERE f.follower_id = ?
   ORDER BY f.created_at DESC
+`);
+
+const getFollowStmt = db.prepare(`
+  SELECT u.uid, u.username, u.name, f.created_at AS followed_at
+  FROM follows f JOIN users u ON u.uid = f.followee_id
+  WHERE f.follower_id = ? AND f.followee_id = ?
 `);
 
 export function listFollows(followerUid: string): FollowRow[] {
   return listFollowsStmt.all(followerUid) as unknown as FollowRow[];
 }
 
+export function getFollow(followerUid: string, followeeUid: string): FollowRow | null {
+  return (getFollowStmt.get(followerUid, followeeUid) ?? null) as FollowRow | null;
+}
+
 const findUserStmt = db.prepare(`
-  SELECT uid, username, email, name FROM users
+  SELECT uid, username, name FROM users
   WHERE uid = ? OR username = ? COLLATE NOCASE
   LIMIT 1
 `);

@@ -3,6 +3,7 @@ import {
   followUser,
   unfollowUser,
   listFollows,
+  getFollow,
   isFollowing,
   findUserByUsernameOrUid,
   getFollowedWatchlist,
@@ -29,8 +30,14 @@ followsRouter.post('/', (req, res) => {
   }
 
   const created = followUser(req.user!.uid, target.uid);
-  if (!created) return res.status(409).json({ error: 'Du folgst diesem User bereits', user: target });
-  res.status(201).json({ user: target });
+  if (!created) {
+    // Already follows — return the existing follow projection for consistency.
+    const existing = getFollow(req.user!.uid, target.uid);
+    return res.status(409).json({ error: 'Du folgst diesem User bereits', user: existing ?? target });
+  }
+  // Return the freshly created follow row (includes followed_at).
+  const row = getFollow(req.user!.uid, target.uid);
+  res.status(201).json({ user: row ?? target });
 });
 
 followsRouter.delete('/:followeeUid', (req, res) => {
