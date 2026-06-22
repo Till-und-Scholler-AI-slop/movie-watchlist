@@ -59,11 +59,13 @@ db.exec(`
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
   )
 `);
-db.exec(`
-  CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username_unique
-  ON users (LOWER(username))
-  WHERE username IS NOT NULL
-`);
+// Note: a previous schema had a unique index on LOWER(username) here. It was
+// removed because it broke the upsert pattern: if a user's uid ever changed
+// (e.g. Authentik re-hashed it), the next request would hit a unique-index
+// violation before the upsert could rebind the row. The PK on uid is the
+// only uniqueness guarantee we need — username collisions are handled by
+// the rebind logic in upsertUser() below. Drop the index if it still exists.
+db.exec('DROP INDEX IF EXISTS idx_users_username_unique');
 
 const wlCols = db.prepare("PRAGMA table_info(watchlist)").all() as { name: string }[];
 
@@ -188,7 +190,54 @@ const upsertUserStmt = db.prepare(`
     name     = excluded.name
 `);
 
+// Lookup by case-insensitive username (no index — we removed the unique one
+// in the migration above; username lookups are rare and limited).
+const findByUsernameStmt = db.prepare(`
+  SELECT uid FROM users WHERE LOWER(username) = LOWER(?) LIMIT 1
+`);
+
+// Rebind statements: move all FK refs from one uid to another, then delete
+// the old user row. Used when a user is "renamed" (uid changed but username
+// stayed the same) — Authentik can re-hash a user's uid if their underlying
+// record changes.
+const moveWatchlistStmt = db.prepare(
+  'UPDATE watchlist SET user_id = ? WHERE user_id = ?',
+);
+const moveFollowsFollowerStmt = db.prepare(
+  'UPDATE follows SET follower_id = ? WHERE follower_id = ?',
+);
+const moveFollowsFolloweeStmt = db.prepare(
+  'UPDATE follows SET followee_id = ? WHERE followee_id = ?',
+);
+const deleteUserStmt = db.prepare('DELETE FROM users WHERE uid = ?');
+
 export function upsertUser(u: User): void {
+  // Rebind: if a user row exists with the same username but a different uid,
+  // migrate all FK references to the new uid and drop the old row. This makes
+  // the upsert robust to Authentik re-hashing a user's uid (the row gets
+  // re-owned in place, no orphaned watchlist entries).
+  if (u.username) {
+    const existing = findByUsernameStmt.get(u.username) as { uid: string } | undefined;
+    if (existing && existing.uid !== u.uid) {
+      const oldUid = existing.uid;
+      const newUid = u.uid;
+      db.exec('BEGIN');
+      try {
+        moveWatchlistStmt.run(newUid, oldUid);
+        moveFollowsFollowerStmt.run(newUid, oldUid);
+        moveFollowsFolloweeStmt.run(newUid, oldUid);
+        // Insert the new row (or update it if some other path already created it).
+        upsertUserStmt.run(u as unknown as Record<string, SQLInputValue>);
+        // Now safe to drop the old row — any FK that pointed at it is gone.
+        deleteUserStmt.run(oldUid);
+        db.exec('COMMIT');
+        return;
+      } catch (e) {
+        db.exec('ROLLBACK');
+        throw e;
+      }
+    }
+  }
   upsertUserStmt.run(u as unknown as Record<string, SQLInputValue>);
 }
 
