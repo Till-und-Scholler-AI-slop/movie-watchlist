@@ -223,12 +223,13 @@ export function upsertUser(u: User): void {
       const newUid = u.uid;
       db.exec('BEGIN');
       try {
+        // Insert the new row first so the FK targets exist before we move refs.
+        upsertUserStmt.run(u as unknown as Record<string, SQLInputValue>);
+        // Move FK references from old to new (both rows exist; FKs stay valid).
         moveWatchlistStmt.run(newUid, oldUid);
         moveFollowsFollowerStmt.run(newUid, oldUid);
         moveFollowsFolloweeStmt.run(newUid, oldUid);
-        // Insert the new row (or update it if some other path already created it).
-        upsertUserStmt.run(u as unknown as Record<string, SQLInputValue>);
-        // Now safe to drop the old row — any FK that pointed at it is gone.
+        // Now safe to drop the old row — all FKs that pointed at it have moved.
         deleteUserStmt.run(oldUid);
         db.exec('COMMIT');
         return;
