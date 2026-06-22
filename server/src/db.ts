@@ -59,6 +59,11 @@ db.exec(`
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
   )
 `);
+db.exec(`
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username_unique
+  ON users (LOWER(username))
+  WHERE username IS NOT NULL
+`);
 
 const wlCols = db.prepare("PRAGMA table_info(watchlist)").all() as { name: string }[];
 
@@ -161,6 +166,17 @@ db.exec('CREATE INDEX IF NOT EXISTS idx_watchlist_user ON watchlist(user_id)');
 db.exec('CREATE INDEX IF NOT EXISTS idx_watchlist_status ON watchlist(status)');
 db.exec('CREATE INDEX IF NOT EXISTS idx_watchlist_media ON watchlist(media_type)');
 db.exec('CREATE INDEX IF NOT EXISTS idx_watchlist_added ON watchlist(added_at)');
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS follows (
+    follower_id  TEXT NOT NULL REFERENCES users(uid),
+    followee_id  TEXT NOT NULL REFERENCES users(uid),
+    created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (follower_id, followee_id),
+    CHECK (follower_id != followee_id)
+  )
+`);
+db.exec('CREATE INDEX IF NOT EXISTS idx_follows_followee ON follows(followee_id)');
 
 // --- Users ---
 
@@ -338,4 +354,149 @@ export function genreStats(userId: string): GenreStat[] {
     }
   }
   return out.sort((a, b) => b.count - a.count).slice(0, 10);
+}
+
+// --- Follows ---
+
+export interface FollowRow {
+  uid: string;
+  username: string | null;
+  name: string | null;
+  followed_at: string;
+}
+
+const followInsertStmt = db.prepare(`
+  INSERT INTO follows (follower_id, followee_id) VALUES (?, ?)
+  ON CONFLICT(follower_id, followee_id) DO NOTHING
+`);
+
+export function followUser(followerUid: string, followeeUid: string): boolean {
+  const res = followInsertStmt.run(followerUid, followeeUid);
+  return res.changes > 0;
+}
+
+const followDeleteStmt = db.prepare(
+  'DELETE FROM follows WHERE follower_id = ? AND followee_id = ?',
+);
+
+export function unfollowUser(followerUid: string, followeeUid: string): boolean {
+  return followDeleteStmt.run(followerUid, followeeUid).changes > 0;
+}
+
+const isFollowingStmt = db.prepare(
+  'SELECT 1 FROM follows WHERE follower_id = ? AND followee_id = ?',
+);
+
+export function isFollowing(followerUid: string, followeeUid: string): boolean {
+  return isFollowingStmt.get(followerUid, followeeUid) !== undefined;
+}
+
+const listFollowsStmt = db.prepare(`
+  SELECT u.uid, u.username, u.name, f.created_at AS followed_at
+  FROM follows f JOIN users u ON u.uid = f.followee_id
+  WHERE f.follower_id = ?
+  ORDER BY f.created_at DESC
+`);
+
+const getFollowStmt = db.prepare(`
+  SELECT u.uid, u.username, u.name, f.created_at AS followed_at
+  FROM follows f JOIN users u ON u.uid = f.followee_id
+  WHERE f.follower_id = ? AND f.followee_id = ?
+`);
+
+export function listFollows(followerUid: string): FollowRow[] {
+  return listFollowsStmt.all(followerUid) as unknown as FollowRow[];
+}
+
+export function getFollow(followerUid: string, followeeUid: string): FollowRow | null {
+  return (getFollowStmt.get(followerUid, followeeUid) ?? null) as FollowRow | null;
+}
+
+const findUserStmt = db.prepare(`
+  SELECT uid, username, name FROM users
+  WHERE uid = ? OR username = ? COLLATE NOCASE
+  LIMIT 1
+`);
+
+export function findUserByUsernameOrUid(query: string): User | null {
+  const q = query.trim();
+  if (!q) return null;
+  return (findUserStmt.get(q, q) ?? null) as User | null;
+}
+
+export interface FollowedWatchlistItem {
+  id: number;
+  tmdb_id: number;
+  media_type: MediaType;
+  title: string;
+  original_title: string | null;
+  year: string | null;
+  poster_path: string | null;
+  genre: string | null;
+  director: string | null;
+  plot: string | null;
+  tagline: string | null;
+  runtime: number | null;
+  tmdb_rating: number | null;
+  number_of_seasons: number | null;
+  number_of_episodes: number | null;
+  status: WatchStatus;
+  rating: number | null;
+  added_at: string;
+  watched_at: string | null;
+}
+
+const followedWatchlistStmt = db.prepare(`
+  SELECT id, tmdb_id, media_type, title, original_title, year, poster_path,
+    genre, director, plot, tagline, runtime, tmdb_rating,
+    number_of_seasons, number_of_episodes, status, rating, added_at, watched_at
+  FROM watchlist
+  WHERE user_id = ?
+  ORDER BY added_at DESC
+`);
+
+export function getFollowedWatchlist(followeeUid: string): FollowedWatchlistItem[] {
+  return followedWatchlistStmt.all(followeeUid) as unknown as FollowedWatchlistItem[];
+}
+
+export interface SharedWatchlistItem {
+  tmdb_id: number;
+  media_type: MediaType;
+  title: string;
+  original_title: string | null;
+  year: string | null;
+  poster_path: string | null;
+  genre: string | null;
+  director: string | null;
+  plot: string | null;
+  tagline: string | null;
+  runtime: number | null;
+  tmdb_rating: number | null;
+  number_of_seasons: number | null;
+  number_of_episodes: number | null;
+  my_status: WatchStatus;
+  my_rating: number | null;
+  their_status: WatchStatus;
+  their_rating: number | null;
+}
+
+const sharedWatchlistStmt = db.prepare(`
+  SELECT
+    a.tmdb_id, a.media_type, a.title, a.original_title, a.year, a.poster_path,
+    a.genre, a.director, a.plot, a.tagline, a.runtime, a.tmdb_rating,
+    a.number_of_seasons, a.number_of_episodes,
+    a.status AS my_status, a.rating AS my_rating,
+    b.status AS their_status, b.rating AS their_rating
+  FROM watchlist a
+  JOIN watchlist b
+    ON b.tmdb_id = a.tmdb_id AND b.media_type = a.media_type AND b.user_id = ?
+  WHERE a.user_id = ?
+  ORDER BY a.added_at DESC
+`);
+
+export function getSharedWatchlist(
+  myUid: string,
+  theirUid: string,
+): SharedWatchlistItem[] {
+  return sharedWatchlistStmt.all(theirUid, myUid) as unknown as SharedWatchlistItem[];
 }

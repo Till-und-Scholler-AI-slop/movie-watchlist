@@ -125,3 +125,54 @@ export interface TitleFull {
   similar: SimilarTitle[];
   watchlist: WatchlistEntrySummary | null;
 }
+
+export interface Follow {
+  uid: string;
+  username: string | null;
+  email: string | null;
+  name: string | null;
+  followed_at: string;
+}
+
+export interface FollowedWatchlistItem {
+  id: number;
+  tmdb_id: number;
+  media_type: MediaType;
+  title: string;
+  original_title: string | null;
+  year: string | null;
+  poster_path: string | null;
+  genre: string | null;
+  director: string | null;
+  plot: string | null;
+  tagline: string | null;
+  runtime: number | null;
+  tmdb_rating: number | null;
+  number_of_seasons: number | null;
+  number_of_episodes: number | null;
+  status: WatchStatus;
+  rating: number | null;
+  added_at: string;
+  watched_at: string | null;
+}
+
+export interface SharedWatchlistItem {
+  tmdb_id: number;
+  media_type: MediaType;
+  title: string;
+  original_title: string | null;
+  year: string | null;
+  poster_path: string | null;
+  genre: string | null;
+  director: string | null;
+  plot: string | null;
+  tagline: string | null;
+  runtime: number | null;
+  tmdb_rating: number | null;
+  number_of_seasons: number | null;
+  number_of_episodes: number | null;
+  my_status: WatchStatus;
+  my_rating: number | null;
+  their_status: WatchStatus;
+  their_rating: number | null;
+}
