@@ -12,6 +12,11 @@ declare module 'express-serve-static-core' {
 // In dev mode (no flag), a fixed local user is used so the app stays single-user.
 const TRUST = process.env.TRUST_AUTHENTIK_HEADERS === '1';
 
+// Optional shared secret: if set (and TRUST=1), nginx must forward the same
+// value in X-Authentik-Secret. Defense-in-depth against header spoofing if the
+// port is ever accidentally exposed. Leave empty to disable the check.
+const SHARED_SECRET = process.env.AUTHENTIK_SHARED_SECRET || '';
+
 const DEV_USER: User = { uid: 'dev', username: 'local', email: null, name: null };
 
 function userFromHeaders(req: Request): User | null {
@@ -27,8 +32,13 @@ function userFromHeaders(req: Request): User | null {
 
 export function authMiddleware(req: Request, res: Response, next: NextFunction): void {
   if (!TRUST) {
+    upsertUser(DEV_USER);
     req.user = DEV_USER;
     return next();
+  }
+  if (SHARED_SECRET && req.get('X-Authentik-Secret') !== SHARED_SECRET) {
+    res.status(401).json({ error: 'Invalid or missing X-Authentik-Secret header' });
+    return;
   }
   const user = userFromHeaders(req);
   if (!user) {

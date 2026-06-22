@@ -144,6 +144,12 @@ watchlist queries to that user.
 2. The app port is bound to `127.0.0.1` (never public) — clients cannot
    bypass the proxy.
 
+**Optional shared secret** (`AUTHENTIK_SHARED_SECRET`): if set, nginx must
+forward the same value in `X-Authentik-Secret`. This adds defense-in-depth
+against header spoofing if the port is ever accidentally exposed. Generate
+with `openssl rand -hex 32` and add
+`proxy_set_header X-Authentik-Secret "<value>";` to the nginx vHost.
+
 ### One-time migration of existing data
 
 If upgrading an existing single-user instance, set `MIGRATE_LEGACY_OWNER_UID`
@@ -167,6 +173,7 @@ schema is migrated (table recreated, rows backfilled). Leave empty in dev.
 | Var | Default | Purpose |
 | --- | ------- | ------- |
 | `TRUST_AUTHENTIK_HEADERS` | _(empty)_ | Set to `1` to trust `X-authentik-*` headers. |
+| `AUTHENTIK_SHARED_SECRET` | _(empty)_ | Optional shared secret for header-spoofing defense. |
 | `MIGRATE_LEGACY_OWNER_UID` | _(empty)_ | One-time: assign existing rows to this uid. |
 
 ### Schema changes

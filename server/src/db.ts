@@ -74,8 +74,9 @@ if (wlCols.length === 0) {
 } else if (!wlCols.some((c) => c.name === 'user_id')) {
   // Legacy table without user_id — recreate with user_id, backfilling
   // existing rows to MIGRATE_LEGACY_OWNER_UID (or 'dev' in dev mode).
-  const legacyUid = process.env.MIGRATE_LEGACY_OWNER_UID ?? 'dev';
-  const srcCols = wlCols.map((c) => c.name).filter((n) => n !== 'user_id');
+  const legacyUid = process.env.MIGRATE_LEGACY_OWNER_UID?.trim() || 'dev';
+  // Exclude id (handled explicitly in INSERT) and user_id (added by migration).
+  const srcCols = wlCols.map((c) => c.name).filter((n) => n !== 'user_id' && n !== 'id');
   db.exec('BEGIN');
   try {
     db.exec(`
@@ -108,9 +109,12 @@ if (wlCols.length === 0) {
     `);
     // Ensure the legacy owner row exists so the FK is satisfied.
     db.prepare('INSERT OR IGNORE INTO users (uid, username) VALUES (?, ?)').run(legacyUid, 'legacy-owner');
-    // Copy only columns that exist in the source table (robust across schema versions).
+    // Copy existing columns (id + srcCols) with the legacy uid as user_id.
     const colList = srcCols.join(', ');
-    db.exec(`INSERT INTO watchlist_new (id, user_id, ${colList}) SELECT id, '${legacyUid}', ${colList} FROM watchlist`);
+    const insertCols = colList ? `id, user_id, ${colList}` : 'id, user_id';
+    const selectCols = colList ? `id, ?, ${colList}` : 'id, ?';
+    db.prepare(`INSERT INTO watchlist_new (${insertCols}) SELECT ${selectCols} FROM watchlist`)
+      .run(legacyUid);
     db.exec('DROP TABLE watchlist');
     db.exec('ALTER TABLE watchlist_new RENAME TO watchlist');
     db.exec('COMMIT');
